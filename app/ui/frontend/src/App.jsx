@@ -937,7 +937,7 @@ const renderPlantUMLSvg = async (code, theme = 'light', backgroundColor = '', co
   return svg
 }
 
-function App({ authUser = null, authEnabled = false, onLogout = null }) {
+function App({ authUser = null, onLogout = null }) {
   const [enableFirstScreenLoader, setEnableFirstScreenLoader] = useState(getInitialFirstScreenLoaderEnabled)
   const [content, setContent] = useState(() => getInitialEditorState().content)
   // 给“系统主题变化事件”提供最新的文档内容，避免闭包拿到旧值
@@ -9512,7 +9512,6 @@ function App({ authUser = null, authEnabled = false, onLogout = null }) {
     onClearRecentFiles: handleClearRecentFiles,
     disabled: !currentPath || isOfficeReadOnly,
     theme: editorTheme,
-    authEnabled,
     authUser,
     onLogout,
   }
