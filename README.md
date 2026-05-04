@@ -184,6 +184,7 @@ docker run -d --rm --name mdeditor2 -p 18080:18080 \
 ## 文档
 
 - [CHANGELOG.md](./CHANGELOG.md) - 版本更新历史
+- [app/ui/frontend/README.md](./app/ui/frontend/README.md) - 前端、后端 API 与开发/排障说明
 - [manifest](./manifest) - 应用元信息（版本、端口、依赖）
 
 ## 反馈与贡献
