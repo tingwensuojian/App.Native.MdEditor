@@ -10,11 +10,6 @@ export async function fetchAuthStatus() {
     return { enabled: true, authenticated: true, user: data.user || null }
   }
 
-  // 若接口不存在/后端未启用 auth 路由，视为未启用认证（保持原行为）
-  if (res.status === 404) {
-    return { enabled: false, authenticated: false, user: null }
-  }
-
   return { enabled: true, authenticated: false, user: null }
 }
 
