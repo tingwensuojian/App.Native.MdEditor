@@ -23,7 +23,7 @@ const { ImageBedManager } = require('./imagebed');
 const { handleImagebedApi } = require('./imagebedApi');
 const { extractOfficePreview } = require('./officeHandler');
 const { handleAuthRoutes } = require('./authRoutes');
-const { isAuthEnabled, requireAuth, optionalAuth } = require('./authMiddleware');
+const { requireAuth, optionalAuth } = require('./authMiddleware');
 
 const PORT = process.env.PORT || process.env.TRIM_SERVICE_PORT || 18089;
 
@@ -375,7 +375,6 @@ function resolveSafePathBase(requestedPath) {
 
 function resolveSafePathForRequest(req, requestedPath) {
   const safePath = resolveSafePathBase(requestedPath);
-  if (!isAuthEnabled()) return safePath;
 
   const currentUser = req.currentUser || optionalAuth(req);
   if (!currentUser || currentUser.username !== 'admin' || currentUser.role !== 'admin') {
@@ -496,21 +495,9 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  const authEnabled = isAuthEnabled();
   if (parsed.pathname.startsWith('/api/')) {
-    const authWhitelist = [
-      '/api/auth/login',
-      '/api/auth/logout',
-      '/api/auth/me',
-      '/api/service-port',
-    ];
-    const skipAuth = authWhitelist.includes(parsed.pathname);
-    if (authEnabled && !skipAuth) {
-      if (!requireAuth(req, res, sendJson)) {
-        return;
-      }
-    } else {
-      optionalAuth(req);
+    if (!requireAuth(req, res, sendJson)) {
+      return;
     }
   }
 
