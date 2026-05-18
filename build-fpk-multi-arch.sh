@@ -267,12 +267,17 @@ stage_common_files() {
   [ -d "$ROOT_DIR/app/var" ] && cp -a "$ROOT_DIR/app/var" "$stage_dir/app/"
   [ -f "$ROOT_DIR/app/ui/config" ] && cp -a "$ROOT_DIR/app/ui/config" "$stage_dir/app/ui/"
   [ -f "$ROOT_DIR/app/ui/proxy.cgi" ] && cp -a "$ROOT_DIR/app/ui/proxy.cgi" "$stage_dir/app/ui/"
+  [ -f "$ROOT_DIR/app/ui/index.cgi" ] && cp -a "$ROOT_DIR/app/ui/index.cgi" "$stage_dir/app/ui/"
   [ -d "$ROOT_DIR/app/ui/images" ] && cp -a "$ROOT_DIR/app/ui/images" "$stage_dir/app/ui/"
   [ -e "$ROOT_DIR/app/ui/svg.svg" ] && cp -a "$ROOT_DIR/app/ui/svg.svg" "$stage_dir/app/ui/"
 
   cp -a "$ROOT_DIR/app/ui/frontend/dist" "$stage_dir/app/ui/frontend/"
 
-  rsync -a --exclude "node_modules/" "$ROOT_DIR/app/server/" "$stage_dir/app/server/"
+  mkdir -p "$stage_dir/app/server"
+  tar -cf - --exclude='node_modules' -C "$ROOT_DIR/app/server" . | tar -xf - -C "$stage_dir/app/server"
+
+  # Fix all file permissions in staging for sandbox environments without chown
+  chmod -R u+rwX "$stage_dir"
 }
 
 build_one_arch() {

@@ -6,7 +6,7 @@
       "type": "iframe",
       "protocol": "http",
       "port": "",
-      "url": "/cgi/ThirdParty/App.Native.MdEditor2/proxy.cgi/",
+      "url": "/cgi/ThirdParty/App.Native.MdEditor2/index.cgi/",
       "allUsers": true
     }
   }

@@ -11,6 +11,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_NAME="App.Native.MdEditor2"
 OUTPUT_FPK="${APP_NAME}.fpk"
 MANIFEST_VERSION=""
+OUTPUT_VERSIONED_FPK=""
 
 export PATH=/var/apps/nodejs_v22/target/bin:$PATH
 
@@ -36,6 +37,7 @@ build_frontend_dist() {
   local frontend_dir="$ROOT_DIR/app/ui/frontend"
   MANIFEST_VERSION="$(awk -F= '$1=="version"{print $2; exit}' "$ROOT_DIR/manifest" | tr -d '\r\n')"
   [ -n "$MANIFEST_VERSION" ] || MANIFEST_VERSION="unknown"
+  OUTPUT_VERSIONED_FPK="${APP_NAME}-${MANIFEST_VERSION}-amd64.fpk"
   export VITE_APP_VERSION="$MANIFEST_VERSION"
   log "building frontend dist"
   pushd "$frontend_dir" >/dev/null
@@ -61,6 +63,12 @@ require_file "$ROOT_DIR/wizard"
 require_file "$ROOT_DIR/app/server"
 require_file "$ROOT_DIR/app/ui/config"
 require_file "$ROOT_DIR/app/ui/proxy.cgi"
+
+if [ -z "$MANIFEST_VERSION" ]; then
+  MANIFEST_VERSION="$(awk -F= '$1=="version"{print $2; exit}' "$ROOT_DIR/manifest" | tr -d '\r\n')"
+  [ -n "$MANIFEST_VERSION" ] || MANIFEST_VERSION="unknown"
+  OUTPUT_VERSIONED_FPK="${APP_NAME}-${MANIFEST_VERSION}-amd64.fpk"
+fi
 
 if [ "$SKIP_FRONTEND_BUILD" -eq 0 ]; then
   build_frontend_dist
@@ -88,6 +96,7 @@ sed -i 's/^platform=.*/platform=x86/' "$STAGE_DIR/manifest"
 [ -d "$ROOT_DIR/app/var" ] && cp -a "$ROOT_DIR/app/var" "$STAGE_DIR/app/"
 [ -f "$ROOT_DIR/app/ui/config" ] && cp -a "$ROOT_DIR/app/ui/config" "$STAGE_DIR/app/ui/"
 [ -f "$ROOT_DIR/app/ui/proxy.cgi" ] && cp -a "$ROOT_DIR/app/ui/proxy.cgi" "$STAGE_DIR/app/ui/"
+[ -f "$ROOT_DIR/app/ui/index.cgi" ] && cp -a "$ROOT_DIR/app/ui/index.cgi" "$STAGE_DIR/app/ui/"
 [ -d "$ROOT_DIR/app/ui/images" ] && cp -a "$ROOT_DIR/app/ui/images" "$STAGE_DIR/app/ui/"
 [ -e "$ROOT_DIR/app/ui/svg.svg" ] && cp -a "$ROOT_DIR/app/ui/svg.svg" "$STAGE_DIR/app/ui/"
 
@@ -112,5 +121,46 @@ if [ ! -f "$STAGE_DIR/$OUTPUT_FPK" ]; then
   exit 1
 fi
 
+# 验包：确保关键路由已进入打包产物，避免安装旧包后 API 404
+python3 - "$STAGE_DIR/$OUTPUT_FPK" <<'PY'
+import io
+import sys
+import tarfile
+
+fpk_path = sys.argv[1]
+required = [
+    '/api/office/open',
+    '/api/office/trimdocs/cgi',
+    'TRIM_DOCS_UPSTREAM_BASE_URL',
+]
+
+with tarfile.open(fpk_path, 'r:gz') as outer:
+    app_member = outer.getmember('app.tgz')
+    app_data = outer.extractfile(app_member).read()
+
+with tarfile.open(fileobj=io.BytesIO(app_data), mode='r:gz') as inner:
+    target = 'server/server.js'
+    if target not in inner.getnames():
+      print('[fast-pack][ERROR] server/server.js not found in app.tgz', file=sys.stderr)
+      sys.exit(2)
+    content = inner.extractfile(target).read().decode('utf-8', 'ignore')
+
+missing = [k for k in required if k not in content]
+if missing:
+    print('[fast-pack][ERROR] package verification failed, missing keys:', ', '.join(missing), file=sys.stderr)
+    sys.exit(3)
+
+print('[fast-pack] package verification passed: office trim.docs routes detected')
+PY
+
 cp -f "$STAGE_DIR/$OUTPUT_FPK" "$ROOT_DIR/$OUTPUT_FPK"
-log "done: $ROOT_DIR/$OUTPUT_FPK ($(du -sh "$ROOT_DIR/$OUTPUT_FPK" | cut -f1))"
+if [ -n "$OUTPUT_VERSIONED_FPK" ]; then
+  cp -f "$STAGE_DIR/$OUTPUT_FPK" "$ROOT_DIR/$OUTPUT_VERSIONED_FPK"
+fi
+
+if [ -n "$OUTPUT_VERSIONED_FPK" ]; then
+  log "done: $ROOT_DIR/$OUTPUT_FPK ($(du -sh "$ROOT_DIR/$OUTPUT_FPK" | cut -f1))"
+  log "done: $ROOT_DIR/$OUTPUT_VERSIONED_FPK ($(du -sh "$ROOT_DIR/$OUTPUT_VERSIONED_FPK" | cut -f1))"
+else
+  log "done: $ROOT_DIR/$OUTPUT_FPK ($(du -sh "$ROOT_DIR/$OUTPUT_FPK" | cut -f1))"
+fi

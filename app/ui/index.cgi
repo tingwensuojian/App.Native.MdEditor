@@ -2,13 +2,13 @@
 
 # Reverse proxy CGI for fnOS same-origin access.
 # It forwards requests from:
-#   /cgi/ThirdParty/<appname>/proxy.cgi/<path>?<query>
+#   /cgi/ThirdParty/<appname>/index.cgi/<path>?<query>
 # to local backend service:
 #   http://127.0.0.1:<resolved_port>/<path>?<query>
 
 set -uo pipefail
 
-cgi_name="proxy.cgi"
+cgi_name="index.cgi"
 target_host="127.0.0.1"
 request_uri="${REQUEST_URI:-/}"
 query_string="${QUERY_STRING:-}"
@@ -139,7 +139,7 @@ if [[ "${method}" == "POST" || "${method}" == "PUT" || "${method}" == "PATCH" ||
     echo "Status: 502 Bad Gateway"
     echo "Content-Type: text/plain; charset=utf-8"
     echo ""
-    echo "proxy.cgi upstream error: ${target_host}:${target_port}"
+    echo "index.cgi upstream error: ${target_host}:${target_port}"
     exit 0
   fi
 else
@@ -147,7 +147,7 @@ else
     echo "Status: 502 Bad Gateway"
     echo "Content-Type: text/plain; charset=utf-8"
     echo ""
-    echo "proxy.cgi upstream error: ${target_host}:${target_port}"
+    echo "index.cgi upstream error: ${target_host}:${target_port}"
     exit 0
   fi
 fi

@@ -12,7 +12,7 @@ import { initPerformanceOptimizations } from './utils/performanceOptimization.js
 
 const getProxyBasePath = () => {
   if (typeof window === 'undefined') return '/'
-  const marker = '/proxy.cgi/'
+  const marker = '/index.cgi/'
   const pathname = window.location.pathname || '/'
   const idx = pathname.indexOf(marker)
   if (idx === -1) return '/'
