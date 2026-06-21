@@ -4,8 +4,8 @@
 
 ## 项目状态
 
-- 当前版本：`v1.30.2`
-- 发布日期：`2026-04-09`
+- 当前版本：`v1.31.1`
+- 发布日期：`2026-06-21`
 - 开发阶段：稳定版本（桌面端/移动端可用）
 
 ## 核心能力
@@ -13,6 +13,7 @@
 - 编辑体验：Monaco 编辑器、语法高亮、代码折叠、自动保存、编辑/预览联动
 - Markdown 扩展：GFM、任务列表、脚注、Mermaid、KaTeX
 - 文件与导出：打开/保存/另存为、文件树与收藏夹、HTML/TXT/微信公众号导出
+- Office 支持：Word/Excel/PPT 在线编辑与保存（ONLYOFFICE），PDF 在线预览
 - AI 能力：AI 对话、文生图、AI 主题生成与导出样式辅助
 - 一键多平台发布：微信公众号、HTML、PDF、图片等格式导出与发布流程
 - 图片能力：粘贴/拖拽上传、图片管理、HEIC 转换、图注与缩放
@@ -41,12 +42,12 @@
 <p align="center"><sub>文件夹挂载方式</sub></p><br>
 <img src="https://pic1.imgdb.cn/item/69c92c803833931b653e7425.png" alt="文件自动备份"><br>
 <p align="center"><sub>文件自动备份</sub></p><br>
-<img src="https://pic1.imgdb.cn/item/69c92e793833931b653e74e6.png" alt="Excel表格转换预览（试验性）">
-<p align="center"><sub>Excel表格转换预览（试验性）</sub></p><br>
+<img src="https://pic1.imgdb.cn/item/69c92e793833931b653e74e6.png" alt="Excel在线编辑与保存（ONLYOFFICE）">
+<p align="center"><sub>Excel在线编辑与保存（ONLYOFFICE）</sub></p><br>
 <img src="https://pic1.imgdb.cn/item/69c92ebf3833931b653e74f8.png" alt="PDF文件预览"><br>
 <p align="center"><sub>PDF文件预览</sub></p><br>
-<img src="https://pic1.imgdb.cn/item/69c92eef3833931b653e7501.png" alt="Word文档转换预览（试验性）"><br>
-<p align="center"><sub>Word文档转换预览（试验性）</sub></p><br>
+<img src="https://pic1.imgdb.cn/item/69c92eef3833931b653e7501.png" alt="Word在线编辑与保存（ONLYOFFICE）"><br>
+<p align="center"><sub>Word在线编辑与保存（ONLYOFFICE）</sub></p><br>
 <div align="center">
 <table>
   <tr>
@@ -71,6 +72,16 @@
 ## 最近更新
 
 完整条目见 [CHANGELOG.md](./CHANGELOG.md)（开发日志）。
+
+### v1.31.1 (2026-06-21)
+
+- 集成 ONLYOFFICE，支持 doc/docx/xls/xlsx/ppt/pptx 在线编辑与保存
+- 大幅优化安装速度，首次启动自动解压依赖，安装从数分钟缩短至数十秒
+- 文件树右键支持上传文件
+- 修复桌面窗口打开 Office 文件空白问题
+- 修复新窗口打开路径异常问题
+- ARM64 架构支持，构建时间缩短至 2 分钟
+- 构建脚本优化：node_modules 打包为单文件 tar.gz，FPK 安装效率提升数倍
 
 ### v1.30.2 (2026-04-09)
 
