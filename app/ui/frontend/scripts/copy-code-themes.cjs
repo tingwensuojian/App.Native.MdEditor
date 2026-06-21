@@ -9,6 +9,11 @@ const path = require('path');
 const srcDir = path.join(__dirname, '../node_modules/highlight.js/styles');
 const destDir = path.join(__dirname, '../public/code-themes');
 
+const pdfjsCmapsSrcDir = path.join(__dirname, '../node_modules/pdfjs-dist/cmaps');
+const pdfjsStandardFontsSrcDir = path.join(__dirname, '../node_modules/pdfjs-dist/standard_fonts');
+const pdfjsCmapsDestDir = path.join(__dirname, '../public/cmaps');
+const pdfjsStandardFontsDestDir = path.join(__dirname, '../public/standard_fonts');
+
 const themes = [
   'github.min.css',
   'github-dark.min.css',
@@ -51,4 +56,22 @@ for (const f of base16Themes) {
   }
 }
 
+let copiedPdfAssets = 0;
+if (fs.existsSync(pdfjsCmapsSrcDir)) {
+  fs.mkdirSync(pdfjsCmapsDestDir, { recursive: true });
+  fs.cpSync(pdfjsCmapsSrcDir, pdfjsCmapsDestDir, { recursive: true });
+  copiedPdfAssets++;
+} else {
+  console.warn('[copy-code-themes] pdfjs cmaps 目录不存在:', pdfjsCmapsSrcDir);
+}
+
+if (fs.existsSync(pdfjsStandardFontsSrcDir)) {
+  fs.mkdirSync(pdfjsStandardFontsDestDir, { recursive: true });
+  fs.cpSync(pdfjsStandardFontsSrcDir, pdfjsStandardFontsDestDir, { recursive: true });
+  copiedPdfAssets++;
+} else {
+  console.warn('[copy-code-themes] pdfjs standard_fonts 目录不存在:', pdfjsStandardFontsSrcDir);
+}
+
 console.log(`[copy-code-themes] 已复制 ${copied} 个主题到 public/code-themes/`);
+console.log(`[copy-code-themes] 已同步 ${copiedPdfAssets} 组 PDF 资源到 public/cmaps 与 public/standard_fonts`);

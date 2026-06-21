@@ -171,6 +171,13 @@ slim_node_modules() {
     rm -rf "$nm_dir/mathjax" "$nm_dir/@mathjax" || true
   fi
 
+    # 移除 musl 变体（amd64 下不需要）
+    rm -rf "$nm_dir/@napi-rs/canvas-linux-x64-musl" "$nm_dir/@img/sharp-libvips-linuxmusl-x64" || true
+    # 移除 better-sqlite3 编译中间文件
+    rm -rf "$nm_dir/better-sqlite3/build/Release/obj" "$nm_dir/better-sqlite3/deps" || true
+    # 移除 TypeScript 类型定义
+    rm -rf "$nm_dir/@octokit/openapi-types" || true
+
   log "after slim: $(du -sh "$nm_dir" | cut -f1)"
 }
 
@@ -246,7 +253,7 @@ install_server_runtime_deps_for_arch() {
       npm install --omit=dev
     fi
 
-    npm rebuild better-sqlite3 --build-from-source
+    npm rebuild better-sqlite3 2>/dev/null || npm rebuild better-sqlite3 --build-from-source
 
     test -f node_modules/better-sqlite3/build/Release/better_sqlite3.node
 
@@ -266,12 +273,12 @@ stage_common_files() {
   [ -d "$ROOT_DIR/app/shares" ] && cp -a "$ROOT_DIR/app/shares" "$stage_dir/app/"
   [ -d "$ROOT_DIR/app/var" ] && cp -a "$ROOT_DIR/app/var" "$stage_dir/app/"
   [ -f "$ROOT_DIR/app/ui/config" ] && cp -a "$ROOT_DIR/app/ui/config" "$stage_dir/app/ui/"
-  [ -f "$ROOT_DIR/app/ui/proxy.cgi" ] && cp -a "$ROOT_DIR/app/ui/proxy.cgi" "$stage_dir/app/ui/"
   [ -f "$ROOT_DIR/app/ui/index.cgi" ] && cp -a "$ROOT_DIR/app/ui/index.cgi" "$stage_dir/app/ui/"
   [ -d "$ROOT_DIR/app/ui/images" ] && cp -a "$ROOT_DIR/app/ui/images" "$stage_dir/app/ui/"
   [ -e "$ROOT_DIR/app/ui/svg.svg" ] && cp -a "$ROOT_DIR/app/ui/svg.svg" "$stage_dir/app/ui/"
 
   cp -a "$ROOT_DIR/app/ui/frontend/dist" "$stage_dir/app/ui/frontend/"
+  [ -d "$ROOT_DIR/app/office-editor/dist" ] && cp -a "$ROOT_DIR/app/office-editor" "$stage_dir/app/"
 
   mkdir -p "$stage_dir/app/server"
   tar -cf - --exclude='node_modules' -C "$ROOT_DIR/app/server" . | tar -xf - -C "$stage_dir/app/server"
@@ -303,6 +310,12 @@ build_one_arch() {
   fi
 
   slim_node_modules "$stage_dir/app/server"
+  log "packaging node_modules into single tarball"
+  pushd "${stage_dir}/app/server" >/dev/null
+  tar czf node_modules.tar.gz node_modules
+  rm -rf node_modules
+  popd >/dev/null
+  log "node_modules packaged"
 
   log "building fpk for ${target_arch}"
   pushd "$stage_dir" >/dev/null

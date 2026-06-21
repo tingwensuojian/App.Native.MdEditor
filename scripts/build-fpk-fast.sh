@@ -62,7 +62,6 @@ require_file "$ROOT_DIR/config"
 require_file "$ROOT_DIR/wizard"
 require_file "$ROOT_DIR/app/server"
 require_file "$ROOT_DIR/app/ui/config"
-require_file "$ROOT_DIR/app/ui/proxy.cgi"
 
 if [ -z "$MANIFEST_VERSION" ]; then
   MANIFEST_VERSION="$(awk -F= '$1=="version"{print $2; exit}' "$ROOT_DIR/manifest" | tr -d '\r\n')"
@@ -95,13 +94,13 @@ sed -i 's/^platform=.*/platform=x86/' "$STAGE_DIR/manifest"
 [ -d "$ROOT_DIR/app/shares" ] && cp -a "$ROOT_DIR/app/shares" "$STAGE_DIR/app/"
 [ -d "$ROOT_DIR/app/var" ] && cp -a "$ROOT_DIR/app/var" "$STAGE_DIR/app/"
 [ -f "$ROOT_DIR/app/ui/config" ] && cp -a "$ROOT_DIR/app/ui/config" "$STAGE_DIR/app/ui/"
-[ -f "$ROOT_DIR/app/ui/proxy.cgi" ] && cp -a "$ROOT_DIR/app/ui/proxy.cgi" "$STAGE_DIR/app/ui/"
 [ -f "$ROOT_DIR/app/ui/index.cgi" ] && cp -a "$ROOT_DIR/app/ui/index.cgi" "$STAGE_DIR/app/ui/"
 [ -d "$ROOT_DIR/app/ui/images" ] && cp -a "$ROOT_DIR/app/ui/images" "$STAGE_DIR/app/ui/"
 [ -e "$ROOT_DIR/app/ui/svg.svg" ] && cp -a "$ROOT_DIR/app/ui/svg.svg" "$STAGE_DIR/app/ui/"
 
 # Frontend: keep dist only
 cp -a "$ROOT_DIR/app/ui/frontend/dist" "$STAGE_DIR/app/ui/frontend/"
+[ -d "$ROOT_DIR/app/office-editor/dist" ] && cp -a "$ROOT_DIR/app/office-editor" "$STAGE_DIR/app/"
 
 # Server: keep runtime files, trim known non-runtime heavy dirs
 rsync -a \
@@ -129,9 +128,8 @@ import tarfile
 
 fpk_path = sys.argv[1]
 required = [
-    '/api/office/open',
-    '/api/office/trimdocs/cgi',
-    'TRIM_DOCS_UPSTREAM_BASE_URL',
+    '/api/office/editor/status',
+    '/office-editor/dist',
 ]
 
 with tarfile.open(fpk_path, 'r:gz') as outer:
