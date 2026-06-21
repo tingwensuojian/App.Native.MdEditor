@@ -57,6 +57,12 @@ function initSchema(db) {
     )
   `).run()
 
+  // 应用默认设置：首次安装时默认开启启动过渡页
+  db.prepare(`
+    INSERT OR IGNORE INTO settings (key, value)
+    VALUES ('enableFirstScreenLoader', 'true')
+  `).run()
+
   // 导出配置预设表
   db.prepare(`
     CREATE TABLE IF NOT EXISTS export_presets (

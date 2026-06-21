@@ -51,7 +51,6 @@ import { FolderArchive, Sun, Moon, Columns, FileText, Eye, PanelLeft, Menu, Shar
 import { useLocalPersistence, useBeforeUnload, useVisibilityChange } from './hooks/useLocalPersistence'
 import { clearContent as clearPersistedContent, loadPersistedState } from './utils/localPersistence'
 import PdfViewer from './components/PdfViewer'
-import OfficeViewer from './components/office/OfficeViewer'
 
 import { saveEditorDraft, loadEditorDraft, clearEditorDraft } from './utils/editorLocalStorage'
 import { DEFAULT_APP_STATE, fetchAllSettings, persistSetting, mergeExportConfigWithDefaults } from './utils/settingsApi'
@@ -1035,7 +1034,14 @@ function App({ authUser = null, authEnabled = false, onLogout = null }) {
   const [officePreviewLoading, setOfficePreviewLoading] = useState(false)
   const [officePreviewLoadingMore, setOfficePreviewLoadingMore] = useState(false)
   const [officePreviewError, setOfficePreviewError] = useState(null)
+  const [useOfficeEditor, setUseOfficeEditor] = useState(false)
+  const [proxyBasePath, setProxyBasePath] = useState('/')
+  const [officeEditorReady, setOfficeEditorReady] = useState(false)
+  const [officeEditorError, setOfficeEditorError] = useState(null)
+  const officeEditorRef = useRef(null)
+  const officeEditorTimeoutRef = useRef(null)
   const officeLoadControllerRef = useRef(null)
+  const officeReadyRef = useRef(false) // Track if office iframe has been loaded
   const [officeXlsxSheetIndex, setOfficeXlsxSheetIndex] = useState(0)
   const currentFileEncodingRef = useRef('utf8') // 'utf8'|'hex' - 用于 Hex 保存时转换
   const [currentFileSize, setCurrentFileSize] = useState(null) // 当前文件大小
@@ -1053,6 +1059,144 @@ function App({ authUser = null, authEnabled = false, onLogout = null }) {
     // Office 只读预览：强制关闭专注模式，避免渲染编辑区
     setFocusMode('off')
   }, [isOfficeReadOnly])
+// Office Editor: postMessage communication with iframe
+  useEffect(() => {
+    if (!useOfficeEditor || !currentPath) return;
+    if (currentFileFormat !== FORMAT_DOCX && currentFileFormat !== FORMAT_XLSX && currentFileFormat !== FORMAT_PPTX_EXPERIMENTAL) return;
+        console.log("[Office Editor] PostMessage effect running, useOfficeEditor:", useOfficeEditor, "currentPath:", currentPath, "format:", currentFileFormat);
+const handler = async (event) => {
+      const msg = event.data;
+      if (!msg || typeof msg !== "object") return;
+      if (msg.type === "document:ready") {
+        console.log("[Office Editor] Received document:ready, currentPath:", currentPath);
+        setOfficeEditorReady(true);
+          officeReadyRef.current = true;
+        if (officeEditorTimeoutRef.current) {
+          clearTimeout(officeEditorTimeoutRef.current);
+          officeEditorTimeoutRef.current = null;
+        }
+        try {
+          const rawRes = await fetch("/api/file?path=" + encodeURIComponent(currentPath) + "&mode=binary");
+          const rawData = await rawRes.json();
+          const w = officeEditorRef.current?.contentWindow;
+          if (rawData.ok && w) {
+            w.postMessage({
+              type: "document:open-buffer",
+              payload: {
+                buffer: Uint8Array.from(atob(rawData.content), c => c.charCodeAt(0)).buffer,
+                fileName: currentPath.split("/").pop(),
+                mimeType: currentFileFormat === FORMAT_DOCX ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" : currentFileFormat === FORMAT_XLSX ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+              },
+            }, "*");
+          }
+        } catch (e) {
+          console.error("[Office Editor] Failed to load file:", e);
+        }
+      }
+      if (msg.type === "document:saved" && (msg.payload?.file || msg.payload?.buffer)) {
+        if (msg.payload.file) {
+          const file = msg.payload.file;
+          const reader = new FileReader();
+          reader.onload = async () => {
+            const base64 = reader.result.split(",")[1];
+            try {
+              await fetch("/api/office/editor/save", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ path: currentPath, content: base64 }),
+              });
+              console.log("[Office Editor] File saved successfully, path:", currentPath);
+              setStatus("Office 文件已保存");
+              setTimeout(() => setStatus("就绪"), 2000);
+            } catch (e) {
+              console.error("[Office Editor] Save failed:", e);
+              setStatus("Office 文件保存失败");
+              setTimeout(() => setStatus("就绪"), 3000);
+            }
+          };
+          reader.readAsDataURL(file);
+        } else {
+          try {
+            const buf = msg.payload.buffer;
+            const bytes = new Uint8Array(buf instanceof ArrayBuffer ? buf : buf.buffer || buf);
+            let binary = "";
+            const chunkSize = 8192;
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+              binary += String.fromCharCode.apply(null, bytes.subarray(i, min(i + chunkSize, bytes.length)));
+            }
+            const base64 = btoa(binary);
+            await fetch("/api/office/editor/save", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ path: currentPath, content: base64 }),
+            });
+            console.log("[Office Editor] Auto-saved successfully");
+            setStatus("Office 文件已保存");
+            setTimeout(() => setStatus("就绪"), 2000);
+          } catch (e) {
+            console.error("[Office Editor] Auto-save failed:", e);
+            setStatus("Office 文件保存失败");
+            setTimeout(() => setStatus("就绪"), 3000);
+          }
+        }
+      }
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, [useOfficeEditor, currentPath, currentFileFormat]);
+
+  // Office Editor: send file data to iframe when switching files
+  useEffect(() => {
+    if (!useOfficeEditor || !currentPath) return;
+    // If iframe not ready yet, wait for document:ready in main effect
+    if (!officeReadyRef.current) { console.log("[Office Editor] Iframe not ready yet, skipping switch"); return; }
+    console.log("[Office Editor] Switching to new office file:", currentPath);
+    const w = officeEditorRef.current?.contentWindow;
+    if (!w) return;
+    (async () => {
+      try {
+        const rawRes = await fetch("/api/file?path=" + encodeURIComponent(currentPath) + "&mode=binary");
+        const rawData = await rawRes.json();
+        if (rawData.ok) {
+          const mimeType = currentFileFormat === FORMAT_DOCX ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" : currentFileFormat === FORMAT_XLSX ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+          w.postMessage({
+            type: "document:open-buffer",
+            payload: {
+              buffer: Uint8Array.from(atob(rawData.content), c => c.charCodeAt(0)).buffer,
+              fileName: currentPath.split("/").pop(),
+              mimeType,
+            },
+          }, "*");
+          console.log("[Office Editor] Sent new file data to iframe:", currentPath);
+        }
+      } catch (e) {
+        console.error("[Office Editor] Failed to send file data to iframe:", e);
+      }
+    })();
+  }, [currentPath, useOfficeEditor]);
+  // Reset office editor when format is not an office format
+  useEffect(() => {
+    if (currentFileFormat !== FORMAT_DOCX && currentFileFormat !== FORMAT_XLSX && currentFileFormat !== FORMAT_PPTX_EXPERIMENTAL) {
+      if (useOfficeEditor) {
+        console.log("[Office Editor] Resetting for non-office format:", currentFileFormat);
+        setUseOfficeEditor(false);
+        setOfficeEditorReady(false);
+      }
+    }
+  }, [currentFileFormat, useOfficeEditor]);
+
+  // Office Editor: auto-save every 15s
+  useEffect(() => {
+    if (!useOfficeEditor || !currentPath) return;
+    console.log("[Office Editor] Starting auto-save timer, useOfficeEditor:", useOfficeEditor, "currentPath:", currentPath);
+    const interval = setInterval(() => {
+      const w = officeEditorRef.current?.contentWindow;
+      if (!w) return;
+      const officeTargetExt = currentFileFormat === FORMAT_DOCX ? "DOCX" : currentFileFormat === FORMAT_XLSX ? "XLSX" : "PPTX";
+      w.postMessage({ type: "document:save", payload: { targetExt: officeTargetExt } }, "*");
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [useOfficeEditor, currentPath]);
 
   const handleExportConfigChange = useCallback((nextConfig) => {
     setExportConfig(nextConfig)
@@ -4797,7 +4941,72 @@ function App({ authUser = null, authEnabled = false, onLogout = null }) {
 
       // Office：只读预览走专用接口
       if (format === FORMAT_DOCX || format === FORMAT_XLSX) {
-        const ok = await loadOfficePreview(path, format, { sheetIndex: 0, rowOffset: 0, rowLimit: 200, append: false })
+        // Check if Office Editor is available
+        try {
+          const statusRes = await fetch("/api/office/editor/status")
+          const statusData = await statusRes.json()
+          if (statusData.ok && statusData.installed) {
+            console.log("[Office Editor] Status OK, path:", path);
+            console.log("[Office Editor] Setting useOfficeEditor=true, path:", path);
+            setUseOfficeEditor(true);
+            // Fetch proxy base path for office-editor iframe in window mode
+            fetch('/api/system/proxy-path').then(function(r){return r.json()}).then(function(d){if(d.ok&&d.proxyBasePath&&d.proxyBasePath!=='/'){setProxyBasePath(d.proxyBasePath);console.log('[Office Editor] Proxy base path:',d.proxyBasePath)}}).catch(function(){});
+            setOfficeEditorReady(false);
+            setOfficeEditorError(null);
+            setCurrentPath(path);
+            // Force preview-only layout for office editor
+            if (layout !== 'preview-only') {
+              setLayout('preview-only');
+            }
+            const loadedName = path.split('/').pop() || '';
+            setDocumentTitle(loadedName.replace(/\.[^.]+$/, ''));
+            setStatus('已加载: ' + path);
+            return;
+          } else if (statusData.ok && !statusData.installed) {
+            console.log("[Office Editor] Not deployed");
+            setUseOfficeEditor(false);
+            setCurrentPath(path);
+            const loadedName = path.split('/').pop() || '';
+            setDocumentTitle(loadedName.replace(/\.[^.]+$/, ''));
+            // Ask user if they want to download and deploy the office editor
+            const deployConfirmed = await requestConfirm({
+              title: '安装 Office 编辑器',
+              message: '检测到 Office 编辑器未安装。ONLYOFFICE 文档编辑器需要从 GitHub 下载并安装，约需 1-3 分钟。\n\n是否现在下载安装？',
+              confirmText: '下载安装',
+              cancelText: '取消',
+              confirmVariant: 'primary',
+              closeOnOverlayClick: false,
+            });
+            if (deployConfirmed) {
+              setStatus('正在下载安装 Office 编辑器，请稍候...');
+              try {
+                const deployRes = await fetch("/api/office/editor/deploy", { method: "POST" });
+                const deployData = await deployRes.json();
+                if (deployData.ok) {
+                  setStatus('Office 编辑器安装完成，请重新打开文件');
+                  showToast('Office 编辑器安装完成，请重新打开文件', 'success', 5000);
+                } else {
+                  const errDetail = deployData.output ? ('\n' + deployData.output.substring(0, 300)) : '';
+                  setStatus('Office 编辑器安装失败: ' + (deployData.message || '未知错误') + errDetail);
+                  showToast('Office 编辑器安装失败，请检查：\n1. 是否可访问 api.github.com\n2. 是否已安装 nodejs_v22\n3. 是否已安装 unzip', 'error', 8000);
+                }
+              } catch (e) {
+                setStatus('Office 编辑器安装请求失败');
+                showToast('Office 编辑器安装请求失败: ' + (e.message || '未知错误'), 'error', 5000);
+              }
+            } else {
+              setStatus('已取消，Office 文件暂时无法编辑');
+            }
+            return;
+          }
+        } catch (e) {
+          console.log("[Office Editor] Status check failed, fallback");
+          setStatus('Office 编辑器服务异常，请检查 office-editor 是否已部署');
+          return;
+        }
+        // Fallback: no longer call deleted extract API, show message
+        setStatus('Office 编辑器未部署，无法预览该文件');
+        return
         if (!ok) {
           setStatus(`加载失败: ${officePreviewError || 'Office 预览加载失败'}`)
           return false
@@ -5328,6 +5537,16 @@ function App({ authUser = null, authEnabled = false, onLogout = null }) {
 
   const handleSaveClick = useCallback(async () => {
     if (isOfficeReadOnly) {
+      // Office Editor mode: send document:save via postMessage
+      if (useOfficeEditor && officeEditorRef.current?.contentWindow) {
+        setStatus("正在保存 Office 文件...");
+        const officeTargetExt = currentFileFormat === FORMAT_DOCX ? "DOCX" : currentFileFormat === FORMAT_XLSX ? "XLSX" : "PPTX";
+        officeEditorRef.current.contentWindow.postMessage(
+          { type: "document:save", payload: { targetExt: officeTargetExt } },
+          "*"
+        );
+        return;
+      }
       showToast('Office 只读预览：保存已禁用', 'warning', 3000)
       return
     }
@@ -5377,7 +5596,7 @@ function App({ authUser = null, authEnabled = false, onLogout = null }) {
       setIsSaveAsMode(false)
       setShowSaveAsDialog(true)
     }
-  }, [currentPath, content, currentFileFormat, documentTitle])
+  }, [currentPath, content, currentFileFormat, documentTitle, useOfficeEditor])
 
   // 恢复历史版本
   const handleVersionRestore = useCallback(async (restoredContent, version) => {
@@ -8907,12 +9126,12 @@ function App({ authUser = null, authEnabled = false, onLogout = null }) {
       localStorage.getItem('md-editor-app-port')
     const runtimePort = window.__APP_SERVICE_PORT__
     const fallbackPort = '18080'
-    const directPort = [queryPort, storedPort, runtimePort, fallbackPort]
+    const directPort = [runtimePort, queryPort, storedPort, fallbackPort]
       .map(v => String(v || '').trim())
       .find(v => /^[0-9]{2,5}$/.test(v)) || fallbackPort
     const protocol = window.location.protocol || 'http:'
     const host = window.location.hostname
-    return `${protocol}//${host}:${directPort}`
+    return `${protocol}//${host}:${directPort}/`
   }, [])
 
   // 发布：飞牛桌面下先提醒保存、开新窗口并打开文件，再检测扩展；非飞牛桌面直接检测扩展
@@ -8942,7 +9161,7 @@ function App({ authUser = null, authEnabled = false, onLogout = null }) {
         // 保存后再次检查（用户可能取消另存为）
         if (hasUnsavedChanges()) return
       }
-      const url = `${getStandaloneAppOrigin()}/?path=${encodeURIComponent(currentPath)}&open=sync`
+      const url = `${getStandaloneAppOrigin()}?path=${encodeURIComponent(currentPath)}&open=sync`
       window.open(url, '_blank', 'noopener,noreferrer')
       return
     }
@@ -8955,7 +9174,7 @@ function App({ authUser = null, authEnabled = false, onLogout = null }) {
   const handleOpenInNewWindow = useCallback(() => {
     const params = new URLSearchParams()
     if (currentPath) params.set('path', currentPath)
-    const url = `${getStandaloneAppOrigin()}/?${params.toString()}`
+    const url = `${getStandaloneAppOrigin()}?${params.toString()}`
     window.open(url, '_blank', 'noopener,noreferrer')
   }, [currentPath, getStandaloneAppOrigin])
 
@@ -9510,7 +9729,7 @@ function App({ authUser = null, authEnabled = false, onLogout = null }) {
     recentFiles,
     onOpenRecentFile: handleOpenRecentFile,
     onClearRecentFiles: handleClearRecentFiles,
-    disabled: !currentPath || isOfficeReadOnly,
+    disabled: !currentPath || (isOfficeReadOnly && !useOfficeEditor),
     theme: editorTheme,
     authEnabled,
     authUser,
@@ -9527,30 +9746,13 @@ function App({ authUser = null, authEnabled = false, onLogout = null }) {
       }}
     >
       {/* PDF 文件使用专门的 PDF Viewer */}
-        {isOfficeReadOnly ? (
-          <OfficeViewer
-            format={currentFileFormat}
-            content={officePreviewData}
-            metadata={officePreviewMetadata}
-            loading={officePreviewLoading}
-            loadingMore={officePreviewLoadingMore}
-            error={officePreviewError}
-            onSelectSheet={(idx) => {
-              if (!currentPath || currentFileFormat !== FORMAT_XLSX) return
-              const next = Number.isFinite(idx) ? idx : 0
-              setOfficeXlsxSheetIndex(next)
-              setOfficePreviewError(null)
-              void loadOfficePreview(currentPath, FORMAT_XLSX, { sheetIndex: next, rowOffset: 0, rowLimit: 200, append: false })
-            }}
-            onLoadMore={() => {
-              if (!currentPath || currentFileFormat !== FORMAT_XLSX) return
-              if (officePreviewLoadingMore || officePreviewLoading) return
-              if (!officePreviewData?.hasMore) return
-              const loaded = Array.isArray(officePreviewData?.rows) ? officePreviewData.rows.length : 0
-              const offset = Number.isFinite(officePreviewData?.rowOffset) ? officePreviewData.rowOffset : 0
-              const nextOffset = offset + loaded
-              void loadOfficePreview(currentPath, FORMAT_XLSX, { sheetIndex: officeXlsxSheetIndex || 0, rowOffset: nextOffset, rowLimit: 200, append: true })
-            }}
+        {isOfficeReadOnly && useOfficeEditor ? (
+          <iframe
+            ref={officeEditorRef}
+            src={(window.__APP_PROXY_BASE_PATH__ && window.__APP_PROXY_BASE_PATH__ !== "/" ? getStandaloneAppOrigin() : "/") + "office-editor/?embed=1&embedOrigin=" + window.location.origin}
+            style={{ width: "100%", height: "100%", border: "none" }}
+            title="Office Editor"
+            onError={() => setOfficeEditorError("iframe 加载失败")}
           />
         ) : currentFileFormat === FORMAT_PDF && pdfDataRef.current ? (
           <PdfViewer 

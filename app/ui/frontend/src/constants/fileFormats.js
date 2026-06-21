@@ -90,19 +90,17 @@ export const EXT_TO_LANGUAGE = {
   '.ini': 'plaintext',
   '.strm': 'plaintext',
   '.pdf': 'plaintext',
+  '.doc': 'plaintext',
   '.docx': 'plaintext',
+  '.xls': 'plaintext',
   '.xlsx': 'plaintext',
+  '.ppt': 'plaintext',
   '.pptx': 'plaintext'
 }
 
 // 首批支持格式（MD + 文本类 + 图片类），用于筛选
 export const SUPPORTED_EXTENSIONS = new Set(Object.keys(EXT_TO_FORMAT))
 
-/**
- * 从文件路径获取格式分类
- * @param {string} filePath - 文件路径或文件名
- * @returns {string} 'md' | 'text' | 'image' | 'unsupported'
- */
 export function getFormatFromPath(filePath) {
   if (!filePath || typeof filePath !== 'string') return FORMAT_UNSUPPORTED
   const ext = '.' + (filePath.split('.').pop() || '').toLowerCase()
@@ -110,28 +108,16 @@ export function getFormatFromPath(filePath) {
   return EXT_TO_FORMAT[ext] || FORMAT_UNSUPPORTED
 }
 
-/**
- * 从文件路径获取 Monaco 语言 ID
- * @param {string} filePath - 文件路径或文件名
- * @returns {string} Monaco 语言 ID
- */
 export function getLanguageFromPath(filePath) {
   if (!filePath || typeof filePath !== 'string') return 'plaintext'
   const ext = '.' + (filePath.split('.').pop() || '').toLowerCase()
   return EXT_TO_LANGUAGE[ext] || 'plaintext'
 }
 
-/**
- * 是否为首批支持格式
- */
 export function isSupportedFormat(filePath) {
   return getFormatFromPath(filePath) !== FORMAT_UNSUPPORTED
 }
 
-/**
- * 获取格式对应的 CSS 着色类名（用于文件列表）
- * 蓝：MD | 灰：文本 | 绿：图片 | 红：非支持
- */
 export function getFormatColorClass(filePath) {
   const format = getFormatFromPath(filePath)
   switch (format) {

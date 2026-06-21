@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react'
-import { File, Folder, Edit, Trash2, Copy, Scissors, Clipboard, Star, FolderPlus, RefreshCw, Info } from 'lucide-react'
+import { File, Folder, Edit, Trash2, Copy, Scissors, Clipboard, Star, FolderPlus, RefreshCw, Upload, Info } from 'lucide-react'
 import './ContextMenu.css'
 
 /**
@@ -120,7 +120,16 @@ function ContextMenu({
       })
     }
     
-    // 刷新（仅目录）
+    
+    // 上传文件（仅目录）
+    if (isDirectory) {
+      items.push({
+        label: '上传文件',
+        icon: <Upload size={16} />,
+        action: () => onAction('upload')
+      })
+    }
+// 刷新（仅目录）
     if (isDirectory) {
       items.push({
         label: '刷新',

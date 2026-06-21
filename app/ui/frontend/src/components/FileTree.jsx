@@ -657,6 +657,42 @@ const FileTree = forwardRef(({
     await loadDirectory(node.path);
   };
 
+  // 上传文件
+  const doUploadFile = async (node) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.style.display = 'none';
+    input.onchange = async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        const dirPath = node.path;
+        showToast?.('正在上传: ' + file.name, 'info');
+        
+        const formData = new FormData();
+        formData.append('path', dirPath);
+        formData.append('file', file);
+        
+        const res = await fetch('/api/file/upload', {
+          method: 'POST',
+          body: formData
+        });
+        const d = await res.json();
+        if (d.ok) {
+          showToast?.('文件上传成功', 'success');
+          await doRefreshDirectory(node);
+        } else {
+          showToast?.('上传失败: ' + (d.message || '未知错误'), 'error');
+        }
+      } catch (err) {
+        showToast?.('上传失败: ' + (err.message || '未知错误'), 'error');
+      }
+      document.body.removeChild(input);
+    };
+    document.body.appendChild(input);
+    input.click();
+  };
+
   const doToggleFavoriteNode = async (node) => {
     await toggleFavorite(node.path, node.type);
     if (onReorderFavorites) {
@@ -730,7 +766,13 @@ const FileTree = forwardRef(({
           await doRefreshDirectory(selectedNode);
         }
         break;
-        
+
+      case 'upload':
+        if (selectedNode.type === 'directory') {
+          await doUploadFile(selectedNode);
+        }
+        break;
+                
       case 'properties':
         doShowPropertiesDialog(selectedNode);
         break;

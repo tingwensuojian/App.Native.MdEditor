@@ -1,3 +1,10 @@
+## [1.31.1] - 2026-06-21
+
+### 修复
+- 修复桌面窗口模式打开 Office 文件空白问题（getStandaloneAppOrigin 返回值添加尾部斜杠，解决 iframe src 端口号畸变）
+- 移除不再使用的 proxy.cgi，简化入口为单一 index.cgi
+- 更新打包脚本移除 proxy.cgi 引用
+
 # 更新日志 (Changelog)
 
 所有重要的项目变更都会记录在此文件中。
@@ -6,6 +13,39 @@
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 ---
+
+## [1.31.0] - 2026-06-17
+
+### 新增
+- 集成 ONLYOFFICE 文档编辑器（ranuts-document），支持 .docx / .xlsx / .pptx 在线编辑
+- Office 编辑器嵌入模式通信协议（postMessage），包括文件打开、保存、自动保存
+- 新增工具栏保存按钮启用机制（修复 SDK 因无回调 URL 禁用保存按钮）
+- 新增文件切换支持：在文件树中切换 Office 文件时自动更新编辑器内容
+- 新增保存状态反馈（保存成功/失败状态提示）
+- 新增 Office 编辑器状态 API（/api/office/editor/status）
+- 新增 Office 文件保存 API（/api/office/editor/save）
+
+### 改进
+- 优化 .doc 格式兜底处理（x2t WASM 不支持 .doc 转换时报错提示）
+- 重构 Office 预览布局：打开 Office 文件时自动切换为仅预览模式
+- 优化保存流程：嵌入模式下工具栏保存按钮直接回传数据至父窗口
+- 优化 buffer 处理：精确切片避免 oversize backing buffer
+
+### 文档
+- 新增 Office 功能支持文档（docs/office-feature.md）
+
+## [1.30.2] - 2026-04-09
+
+### 修复
+- 修复 PlantUML / Infographic 在高频输入与连续渲染场景下偶发不渲染的问题（渲染调度补偿与代次控制）
+- 修复 Monaco 编辑器重复模块定义告警（`vs/editor/editor.main`）及 Worker 初始化告警，避免回退主线程导致卡顿
+
+### 改进
+- 优化图表渲染策略：视口优先 + 受限并发，首屏图表更快可见
+- 优化 Infographic 加载兼容性与失败兜底路径，提升官网模板在当前版本下的渲染成功率
+- 新增渲染耗时分段日志：区分“主流程渲染”与“图表增强渲染”，便于定位性能瓶颈
+- 重型文档（Mermaid / PlantUML / Infographic）告警阈值分级，减少误报并提升调试可读性
+- 增加 Infographic 持久化缓存（本地复用），重复打开同内容时渲染更快
 
 ## [1.30.0] - 2026-04-04
 
@@ -606,4 +646,4 @@
 
 ---
 
-*最后更新：2026-03-30（1.29.61）*
+*最后更新：2026-04-09（1.30.2）*

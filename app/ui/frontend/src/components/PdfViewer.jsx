@@ -152,11 +152,16 @@ const PdfViewer = ({ pdfBase64, fileName = 'document.pdf', theme = 'light', onRe
         bytes[i] = binaryString.charCodeAt(i);
       }
 
-      // 配置 CMap 参数以支持中文字体 - 使用简单路径
+      // 资源 URL 必须兼容“子路径部署”（不能写死以 / 开头）
+      const appBaseUrl = new URL(import.meta.env.BASE_URL || './', window.location.href);
+      const cMapUrl = new URL('cmaps/', appBaseUrl).toString();
+      const standardFontDataUrl = new URL('standard_fonts/', appBaseUrl).toString();
+
       const loadingTask = lib.getDocument({
         data: bytes,
-        cMapUrl: '/node_modules/pdfjs-dist/cmaps/',
-        cMapPacked: true
+        cMapUrl,
+        cMapPacked: true,
+        standardFontDataUrl,
       });
       const pdfDoc = await loadingTask.promise;
       

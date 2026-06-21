@@ -130,6 +130,7 @@ if [[ -n "${HTTP_X_FORWARDED_FOR:-}" ]]; then
 fi
 if [[ -n "${REMOTE_ADDR:-}" ]]; then
   curl_args+=(-H "X-Real-IP: ${REMOTE_ADDR}")
+  [[ -n "${REQUEST_URI:-}" ]] && curl_args+=(-H "X-Original-URI: ${REQUEST_URI}")
 fi
 
 curl_args+=("${target_url}")

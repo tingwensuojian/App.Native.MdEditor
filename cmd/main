@@ -49,6 +49,14 @@ start_app() {
   mkdir -p "${TRIM_PKGVAR}"
   log_msg "starting backend on port ${PORT} ..."
 
+  # 首次启动：检查 node_modules 是否需要解压
+  if [ ! -d "${TRIM_APPDEST}/server/node_modules" ] && [ -f "${TRIM_APPDEST}/server/node_modules.tar.gz" ]; then
+    log_msg "first launch detected, extracting node_modules..."
+    cd "${TRIM_APPDEST}/server"
+    tar xzf node_modules.tar.gz
+    log_msg "node_modules extracted successfully"
+  fi
+
   # 后端入口：安装到系统后，server.js 位于 ${TRIM_APPDEST}/server/server.js
   if [ ! -f "${TRIM_APPDEST}/server/server.js" ]; then
     echo "后端入口文件不存在：${TRIM_APPDEST}/server/server.js" > "${TRIM_TEMP_LOGFILE}"

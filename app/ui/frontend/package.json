@@ -1,7 +1,7 @@
 {
   "name": "md-editor-frontend",
   "private": true,
-  "version": "1.28.10",
+  "version": "1.31.0",
   "type": "module",
   "scripts": {
     "predev": "node scripts/copy-code-themes.cjs",
@@ -11,9 +11,9 @@
     "preview": "node node_modules/vite/bin/vite.js preview"
   },
   "dependencies": {
+    "@antv/infographic": "^0.2.16",
     "@fontsource/fira-code": "^5.2.7",
     "@fontsource/jetbrains-mono": "^5.2.8",
-    "@antv/infographic": "^0.2.16",
     "@monaco-editor/react": "^4.6.0",
     "dom-to-image-more": "^3.7.2",
     "github-markdown-css": "^5.5.1",

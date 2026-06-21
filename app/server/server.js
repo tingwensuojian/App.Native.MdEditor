@@ -21,7 +21,6 @@ const imageConverter = require('./imageConverter');
 const { getDb } = require('./db');
 const { ImageBedManager } = require('./imagebed');
 const { handleImagebedApi } = require('./imagebedApi');
-const { extractOfficePreview } = require('./officeHandler');
 const { handleAuthRoutes } = require('./authRoutes');
 const { isAuthEnabled, requireAuth, optionalAuth } = require('./authMiddleware');
 
@@ -547,6 +546,20 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 500, { ok: false, error: err.message });
       return;
     }
+  }
+
+  
+  // GET /api/system/proxy-path - return proxy base path for office-editor
+  // Only return proxy path when accessed through CGI proxy (X-Original-URI header present)
+  if (parsed.pathname === '/api/system/proxy-path' && req.method === 'GET') {
+    const originalUri = req.headers["x-original-uri"];
+    const appName = process.env.TRIM_APPNAME || '';
+    let proxyBasePath = '/';
+    if (originalUri && appName) {
+      proxyBasePath = '/cgi/ThirdParty/' + appName + '/index.cgi/';
+    }
+    sendJson(res, 200, { ok: true, proxyBasePath: proxyBasePath, appName: appName, viaProxy: !!originalUri });
+    return;
   }
 
   // 获取系统主题：GET /api/system/theme
@@ -1898,7 +1911,15 @@ const server = http.createServer(async (req, res) => {
         '.webp': 'image/webp',
         '.svg': 'image/svg+xml',
         '.bmp': 'image/bmp',
-        '.ico': 'image/x-icon'
+        '.ico': 'image/x-icon',
+        '.doc': 'application/msword',
+        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        '.xls': 'application/vnd.ms-excel',
+        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        '.ppt': 'application/vnd.ms-powerpoint',
+        '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        '.pdf': 'application/pdf',
+        '.csv': 'text/csv',
       };
       const contentType = mimeTypes[ext] || 'application/octet-stream';
 
@@ -1916,7 +1937,8 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(200, {
           'Content-Type': contentType,
           'Content-Length': buf.length,
-          'Cache-Control': 'public, max-age=3600'
+          'Cache-Control': 'public, max-age=3600',
+          ...CORS_HEADERS
         });
         res.end(buf);
       });
@@ -2008,46 +2030,59 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Office 文件提取预览：GET /api/file/office/extract?path=/abs/path/to/file&format=docx|xlsx
-  if (parsed.pathname === '/api/file/office/extract' && req.method === 'GET') {
-    const requestedPath = parsed.query.path
-    const format = (parsed.query.format || '').toLowerCase()
-    const sheetIndexParam = parsed.query.sheetIndex
-    const rowOffsetParam = parsed.query.rowOffset
-    const rowLimitParam = parsed.query.rowLimit
+  // === Office Editor API ===
 
-    try {
-      if (!requestedPath) {
-        sendJson(res, 400, { ok: false, code: 'MISSING_PATH', message: '缺少 path 参数' })
-        return
-      }
-      if (!['docx', 'xlsx'].includes(format)) {
-        sendJson(res, 400, { ok: false, code: 'OFFICE_FORMAT_UNSUPPORTED', message: '不支持的 Office 格式', httpStatus: 400 })
-        return
-      }
-
-      const safePath = resolveSafePathForRequest(req, requestedPath)
-      const sheetIndex = sheetIndexParam !== undefined ? parseInt(String(sheetIndexParam), 10) : 0
-      const rowOffset = rowOffsetParam !== undefined ? parseInt(String(rowOffsetParam), 10) : 0
-      const rowLimit = rowLimitParam !== undefined ? parseInt(String(rowLimitParam), 10) : undefined
-      const result = await extractOfficePreview(safePath, format, {
-        sheetIndex: Number.isFinite(sheetIndex) ? sheetIndex : 0,
-        rowOffset: Number.isFinite(rowOffset) ? rowOffset : 0,
-        rowLimit: (rowLimit !== undefined && Number.isFinite(rowLimit)) ? rowLimit : undefined,
-      })
-      const statusCode = result && result.ok ? 200 : (result.httpStatus || 400)
-      sendJson(res, statusCode, result)
-      return
-    } catch (e) {
-      const message = e && e.message ? e.message : 'OFFICE_LOAD_ERROR'
-      if (message === 'PATH_NOT_ALLOWED') {
-        sendJson(res, 403, { ok: false, code: message, message: '目标路径不在授权目录内' })
-      } else {
-        sendJson(res, 400, { ok: false, code: 'OFFICE_LOAD_ERROR', message: 'Office 预览加载失败' })
-      }
-      return
-    }
+  // GET /api/office/editor/status - check if office editor is deployed
+  if (parsed.pathname === '/api/office/editor/status' && req.method === 'GET') {
+    const bundledDir = path.join(__dirname, '../office-editor/dist');
+    const deployedDir = '/vol4/@appdata/App.Native.MdEditor2/office-editor/dist';
+    const installed = fs.existsSync(bundledDir + '/index.html') || fs.existsSync(deployedDir + '/index.html');
+    sendJson(res, 200, { ok: true, installed: installed });
+    return;
   }
+
+  // POST /api/office/editor/save - save office file from editor
+  if (parsed.pathname === '/api/office/editor/save' && req.method === 'POST') {
+    let body = '';
+    req.on('data', (chunk) => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body);
+        const filePath = data.path;
+        const content = Buffer.from(data.content, 'base64');
+        if (!filePath || !content) {
+          sendJson(res, 400, { ok: false, message: 'Missing path or content' });
+          return;
+        }
+        fs.writeFile(filePath, content, (err) => {
+          if (err) {
+            sendJson(res, 500, { ok: false, message: 'Save failed: ' + err.message });
+            return;
+          }
+          sendJson(res, 200, { ok: true, message: 'File saved' });
+        });
+      } catch (e) {
+        sendJson(res, 400, { ok: false, message: 'Invalid request: ' + e.message });
+      }
+    });
+    return;
+  }
+
+  // POST /api/office/editor/deploy - deploy the office editor
+  if (parsed.pathname === '/api/office/editor/deploy' && req.method === 'POST') {
+    const { execSync } = require('child_process');
+    const scriptPath = path.join(__dirname, '../../scripts/deploy-office-editor.sh');
+    try {
+      const output = execSync('bash ' + scriptPath, { timeout: 60000, cwd: path.join(__dirname, "../..") });
+      sendJson(res, 200, { ok: true, message: 'Office Editor deployed', output: output.toString().trim() });
+    } catch (e) {
+      const msg = e.stdout ? e.stdout.toString() : (e.message || 'unknown error');
+      sendJson(res, 500, { ok: false, message: 'Deploy failed', output: msg });
+    }
+    return;
+  }
+
+
 
   // 媒体文件服务：GET /api/media?path=/abs/path/to/image.jpg
   // 直接返回文件内容，用于图片等资源的直接访问
@@ -2068,6 +2103,14 @@ const server = http.createServer(async (req, res) => {
         '.webp': 'image/webp',
         '.svg': 'image/svg+xml',
         '.bmp': 'image/bmp',
+        '.doc': 'application/msword',
+        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        '.xls': 'application/vnd.ms-excel',
+        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        '.ppt': 'application/vnd.ms-powerpoint',
+        '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        '.pdf': 'application/pdf',
+        '.csv': 'text/csv',
         '.ico': 'image/x-icon'
       };
       const contentType = mimeTypes[ext] || 'application/octet-stream';
@@ -2086,7 +2129,8 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(200, {
           'Content-Type': contentType,
           'Content-Length': buf.length,
-          'Cache-Control': 'public, max-age=3600'
+          'Cache-Control': 'public, max-age=3600',
+          ...CORS_HEADERS
         });
         res.end(buf);
       });
@@ -3174,6 +3218,97 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+
+  // 文件上传：POST /api/file/upload
+  if (parsed.pathname === '/api/file/upload' && req.method === 'POST') {
+    const contentType = req.headers['content-type'] || '';
+    if (!contentType.includes('multipart/form-data')) {
+      sendJson(res, 400, { ok: false, code: 'INVALID_CONTENT_TYPE', message: '需要 multipart/form-data' });
+      return;
+    }
+
+    let boundary = (contentType.split('boundary=')[1] || '').trim();
+    boundary = boundary.replace(/^["']|["']$/g, '').split(';')[0].trim();
+    if (!boundary) {
+      sendJson(res, 400, { ok: false, code: 'NO_BOUNDARY', message: '缺少 boundary' });
+      return;
+    }
+
+    let rawData = Buffer.alloc(0);
+    const MAX_SIZE = 100 * 1024 * 1024; // 100MB
+
+    req.on('data', chunk => {
+      rawData = Buffer.concat([rawData, chunk]);
+      if (rawData.length > MAX_SIZE) {
+        rawData = null;
+        sendJson(res, 413, { ok: false, code: 'FILE_TOO_LARGE', message: '文件过大，限制 100MB' });
+        req.destroy();
+      }
+    });
+
+    req.on('end', async () => {
+      try {
+        if (!rawData) return;
+        const boundaryBuf = Buffer.from('--' + boundary);
+        let targetPath = '';
+        let fileContent = null;
+        let fileName = '';
+
+        let start = 0;
+        while (true) {
+          const bIdx = rawData.indexOf(boundaryBuf, start);
+          if (bIdx === -1) break;
+          const nextB = rawData.indexOf(boundaryBuf, bIdx + boundaryBuf.length);
+          if (nextB === -1) break;
+          
+          const part = rawData.slice(bIdx + boundaryBuf.length, nextB);
+          const headerEnd = part.indexOf(Buffer.from('\r\n\r\n'));
+          if (headerEnd === -1) { start = nextB; continue; }
+
+          const headerSection = part.slice(0, headerEnd).toString('utf8');
+          if (!headerSection.includes('Content-Disposition')) { start = nextB; continue; }
+
+          // 提取文件名
+          const fnameMatch = headerSection.match(/filename="([^"]+)"/);
+          if (fnameMatch) {
+            fileName = fnameMatch[1];
+            fileContent = part.slice(headerEnd + 4, part.length - 2);
+          }
+
+          // 提取 path 字段
+          const nameMatch = headerSection.match(/name="([^"]+)"/);
+          if (nameMatch && nameMatch[1] === 'path' && !headerSection.includes('filename=')) {
+            targetPath = part.slice(headerEnd + 4, part.length - 2).toString('utf8').trim();
+          }
+
+          start = nextB;
+        }
+
+        if (!fileContent || !fileName) {
+          sendJson(res, 400, { ok: false, message: '未找到文件' });
+          return;
+        }
+
+        const fullPath = path.join(targetPath, fileName);
+        const safePath = resolveSafePathForRequest(req, fullPath);
+        const dir = path.dirname(safePath);
+
+        await fs.promises.mkdir(dir, { recursive: true });
+        await fs.promises.writeFile(safePath, fileContent);
+
+        sendJson(res, 200, { ok: true, path: safePath, name: fileName });
+      } catch (e) {
+        const code = e && e.message;
+        if (code === 'PATH_NOT_ALLOWED') {
+          sendJson(res, 403, { ok: false, code, message: '目标路径不在授权目录内' });
+        } else {
+          sendJson(res, 500, { ok: false, message: '上传失败: ' + (e.message || '') });
+        }
+      }
+    });
+    return;
+  }
+
   // 图片上传：POST /api/image/upload
   if (parsed.pathname === '/api/image/upload' && req.method === 'POST') {
     console.log('[Upload] 收到上传请求，Content-Type:', req.headers['content-type']);
@@ -3973,7 +4108,71 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  const staticPath = path.join(STATIC_DIR, parsed.pathname === '/' ? 'index.html' : parsed.pathname);
+  // Office Editor WASM files: /wasm/* (used by office-editor internal code)
+  if (parsed.pathname.startsWith('/wasm/')) {
+    const wasmDistDir = (fs.existsSync(path.join(__dirname, '../office-editor/dist/wasm'))
+      ? path.join(__dirname, '../office-editor/dist')
+      : '/vol4/@appdata/App.Native.MdEditor2/office-editor/dist');
+    const wasmPath = parsed.pathname.slice(1);
+    const fp = path.join(wasmDistDir, wasmPath);
+    if (fp.startsWith(wasmDistDir) && fs.existsSync(fp) && fs.statSync(fp).isFile()) {
+      const ext = path.extname(fp).toLowerCase();
+      const mime = { ".js": "application/javascript; charset=utf-8", ".wasm": "application/wasm", ".data": "application/octet-stream" };
+      res.writeHead(200, { "Content-Type": mime[ext] || "application/octet-stream" });
+      fs.createReadStream(fp).pipe(res);
+      return;
+    }
+  }
+
+  // Office Editor static files: /office-editor/*
+  if (parsed.pathname.startsWith('/office-editor/') || parsed.pathname === '/office-editor') {
+    const bundledDir = path.join(__dirname, '../office-editor/dist');
+    const deployedDir = '/vol4/@appdata/App.Native.MdEditor2/office-editor/dist';
+    const distDir = fs.existsSync(bundledDir + '/index.html') ? bundledDir : (fs.existsSync(deployedDir + '/index.html') ? deployedDir : bundledDir);
+    let officePath = parsed.pathname === '/office-editor' || parsed.pathname === '/office-editor/' ? '/index.html' : '/' + parsed.pathname.slice('/office-editor/'.length);
+    const fp = path.join(distDir, officePath);
+    if (!fp.startsWith(distDir)) {
+      res.writeHead(403); res.end('Forbidden'); return;
+    }
+    if (fs.existsSync(fp) && fs.statSync(fp).isFile()) {
+      const ext = path.extname(fp).toLowerCase();
+      const officeMime = {
+        '.html': 'text/html; charset=utf-8',
+        '.js': 'application/javascript; charset=utf-8',
+        '.mjs': 'application/javascript; charset=utf-8',
+        '.css': 'text/css; charset=utf-8',
+        '.json': 'application/json',
+        '.wasm': 'application/wasm',
+        '.ttf': 'font/ttf',
+        '.woff': 'font/woff',
+        '.woff2': 'font/woff2',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.svg': 'image/svg+xml',
+        '.ico': 'image/x-icon',
+      };
+      if (ext === '.html') {
+        fs.readFile(fp, 'utf8', (err, data) => {
+          if (err) {
+            res.writeHead(500);
+            res.end('Server Error');
+            return;
+          }
+          // base tag removed - office editor uses relative paths
+          res.writeHead(200, { 'Content-Type': officeMime[ext] || 'application/octet-stream' });
+          res.end(data);
+        });
+      } else {
+        res.writeHead(200, { 'Content-Type': officeMime[ext] || 'application/octet-stream' });
+        fs.createReadStream(fp).pipe(res);
+      }
+      return;
+    }
+    res.writeHead(404); res.end('Not Found');
+    return;
+  }
+
+    const staticPath = path.join(STATIC_DIR, parsed.pathname === '/' ? 'index.html' : parsed.pathname);
   
   if (fs.existsSync(staticPath) && fs.statSync(staticPath).isFile()) {
     const ext = path.extname(staticPath);
@@ -4013,8 +4212,21 @@ const server = http.createServer(async (req, res) => {
         res.end('Internal Server Error');
         return;
       }
+      let responseData = data;
+      if (ext === '.html') {
+        const originalUri = req.headers["x-original-uri"];
+        if (originalUri) {
+          const marker = "/index.cgi/";
+          const idx = originalUri.indexOf(marker);
+          if (idx !== -1) {
+            const proxyBasePath = originalUri.slice(0, idx + marker.length);
+            const script = "<script>window.__APP_PROXY_BASE_PATH__ = '" + proxyBasePath + "';window.__APP_SERVICE_PORT__ = '" + String(PORT) + "';</script>";
+            responseData = Buffer.from(data.toString().replace("</head>", script + "</head>"));
+          }
+        }
+      }
       res.writeHead(200, headers);
-      res.end(data);
+      res.end(responseData);
     });
     return;
   }
@@ -4029,6 +4241,18 @@ const server = http.createServer(async (req, res) => {
           res.end('Internal Server Error');
           return;
         }
+        // Check X-Original-URI header (set by index.cgi proxy) to determine proxy base path
+        // Only inject when request actually came through the proxy
+        let proxyBasePath = "/";
+        const originalUri = req.headers["x-original-uri"];
+        if (originalUri) {
+          const marker = "/index.cgi/";
+          const idx = originalUri.indexOf(marker);
+          if (idx !== -1) {
+            proxyBasePath = originalUri.slice(0, idx + marker.length);
+            data = data.replace("</head>", "<script>window.__APP_PROXY_BASE_PATH__ = '" + proxyBasePath + "';window.__APP_SERVICE_PORT__ = '" + String(PORT) + "';</script></head>");
+          }
+        }
         res.writeHead(200, {
           'Content-Type': 'text/html; charset=utf-8',
           'Cache-Control': 'no-cache, max-age=0, must-revalidate'
@@ -4039,9 +4263,13 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // 404
-  res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-  res.end('Not Found');
+  // 404 — return JSON for API routes
+  if (parsed.pathname.startsWith('/api')) {
+    sendJson(res, 404, { ok: false, code: 'NOT_FOUND', message: 'API endpoint not found' });
+  } else {
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Not Found');
+  }
 });
 
 // 显式绑定 0.0.0.0，与 web/fpk 的 python -m http.server --bind 0.0.0.0 一致，确保局域网内手机/PC 均可访问

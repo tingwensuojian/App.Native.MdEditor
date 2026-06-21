@@ -38,3 +38,26 @@ app/var/thumbnails/
 !manifest
 !markdown.svg
 !build-fpk-multi-arch.sh
+
+
+# Office editor assets (built separately, ~280MB, not for git)
+app/office-editor/
+
+# Generated PDF resources
+app/ui/frontend/public/cmaps/
+app/ui/frontend/public/standard_fonts/
+
+# Backup/restore files
+app/server/server.js.fpk_restored
+app/ui/frontend/src/App.jsx.bak_final
+app/ui/frontend/vite.config.js.bak
+scripts/build-fpk-multi-arch.sh.bak
+
+# Alternative package managers
+app/ui/frontend/pnpm-lock.yaml
+app/ui/frontend/pnpm-workspace.yaml
+
+# Utility/deploy scripts (one-time use)
+scripts/deploy-office-editor.sh
+scripts/office-editor-api.mjs
+scripts/serve-office.mjs

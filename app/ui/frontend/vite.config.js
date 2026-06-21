@@ -12,6 +12,11 @@ export default defineConfig({
     strictPort: true,
     host: true, // 局域网可访问，手机等设备可连 NAS_IP:<dev端口> 做热更新调试
     proxy: {
+      '/office-editor/': { target: 'http://127.0.0.1:18081', changeOrigin: true, rewrite: (p) => p.replace(/^\/office-editor/, '') },
+      '/api/office/editor': {
+        target: 'http://127.0.0.1:18083',
+        changeOrigin: true
+      },
       '/api': {
         target: 'http://127.0.0.1:18080',
         changeOrigin: true
@@ -93,6 +98,6 @@ export default defineConfig({
       '@braintree/sanitize-url',
       'mermaid'
     ],
-    exclude: []
+    exclude: ['lucide-react']
   }
 })
