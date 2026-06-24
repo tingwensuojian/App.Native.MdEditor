@@ -4,10 +4,6 @@ const {
   verifySession,
 } = require('./authService')
 
-function isAuthEnabled() {
-  return String(process.env.ENABLE_AUTH || '').toLowerCase() === 'true'
-}
-
 function attachCurrentUser(req) {
   const cookies = parseCookieHeader(req.headers.cookie || '')
   const token = cookies[SESSION_COOKIE_NAME]
@@ -34,7 +30,6 @@ function requireAuth(req, res, sendJson) {
 }
 
 module.exports = {
-  isAuthEnabled,
   optionalAuth,
   requireAuth,
 }

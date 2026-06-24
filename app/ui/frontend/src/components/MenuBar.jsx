@@ -174,7 +174,6 @@ function MenuBar({
   disabled,
   theme,
   compact = false,
-  authEnabled = false,
   authUser = null,
   onLogout,
 }) {
@@ -368,7 +367,7 @@ function MenuBar({
         { label: '重置缩放', icon: 'zoom-reset', shortcut: 'Ctrl+0', action: onZoomReset },
         { divider: true },
         { label: '设置', icon: 'settings', action: onSettings },
-        ...(authEnabled && authUser && !compact ? [
+        ...(authUser && !compact ? [
           { divider: true },
           { label: logoutLabel, icon: 'logout', action: onLogout, disabled: !onLogout }
         ] : [])
@@ -534,7 +533,7 @@ function MenuBar({
             </div>}
           </div>
         ))}
-        {authEnabled && authUser && (
+        {authUser && (
           <div className="compact-menu-section compact-auth-section">
             <div className="menu-divider compact-menu-divider" />
             <button
