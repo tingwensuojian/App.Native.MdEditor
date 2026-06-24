@@ -19,7 +19,7 @@ echo
 
 step() { echo; echo "---- $1 ----"; }
 
-step "1) 未登录检查 /api/auth/me (期望 401 或 404)"
+step "1) 未登录检查 /api/auth/me (期望 401)"
 HTTP_CODE=$(curl -sS -o /tmp/auth_me_before.json -w "%{http_code}" \
   -b "$COOKIE_JAR" -c "$COOKIE_JAR" \
   "$BASE_URL/api/auth/me" || true)
@@ -27,9 +27,8 @@ echo "HTTP: $HTTP_CODE"
 cat /tmp/auth_me_before.json || true
 echo
 
-if [[ "$HTTP_CODE" == "404" ]]; then
-  echo "[提示] /api/auth/me 返回 404，说明后端认证路由不可用或未启用。"
-  echo "请确认后端开启了 auth 路由，再继续。"
+if [[ "$HTTP_CODE" != "401" ]]; then
+  echo "[失败] 未登录时 /api/auth/me 期望 401，实际为 $HTTP_CODE。"
   exit 1
 fi
 

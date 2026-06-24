@@ -54,18 +54,15 @@ const isFirstScreenLoaderEnabled = () => {
 
 function AuthBootstrap() {
   const [loading, setLoading] = useState(true)
-  const [authEnabled, setAuthEnabled] = useState(false)
   const [user, setUser] = useState(null)
   const [theme, setTheme] = useState(() => resolveTheme())
 
   const loadStatus = useCallback(async () => {
     try {
       const state = await fetchAuthStatus()
-      setAuthEnabled(Boolean(state?.enabled))
       setUser(state?.authenticated ? state.user : null)
     } catch {
-      // 探测失败时保持兼容：直接进入应用
-      setAuthEnabled(false)
+      // 探测失败时保持兼容：回到登录页
       setUser(null)
     } finally {
       setLoading(false)
@@ -129,11 +126,11 @@ function AuthBootstrap() {
     return null
   }
 
-  if (authEnabled && !user) {
+  if (!user) {
     return <LoginPage onLogin={handleLogin} theme={theme} />
   }
 
-  return <App authUser={user} authEnabled={authEnabled} onLogout={handleLogout} />
+  return <App authUser={user} onLogout={handleLogout} />
 }
 
 export default AuthBootstrap
