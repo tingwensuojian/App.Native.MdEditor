@@ -7,10 +7,6 @@
 mkdir -p "${TRIM_PKGVAR}"
 touch "${TRIM_PKGVAR}/md-editor.log"
 
-# Persist install-time service port for proxy.cgi/runtime consumers.
-SERVICE_PORT="${wizard_port:-${TRIM_SERVICE_PORT:-18080}}"
-echo "${SERVICE_PORT}" > "${TRIM_PKGVAR}/service_port"
-
 # 确保 shares 下的所有目录（Folder、images、history）归属应用用户，避免 EACCES「无权限访问目录」
 # 对每个目录单独执行 chown，确保权限修复成功
 

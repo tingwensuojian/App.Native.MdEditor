@@ -7,6 +7,13 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const ImageBedAdapter = require('./ImageBedAdapter');
+const { getPublicBasePath, normalizeGatewayPrefix } = require('../gatewayConfig');
+
+const GATEWAY_PREFIX = normalizeGatewayPrefix(process.env.FNNAS_GATEWAY_PREFIX || '');
+
+function getLocalImageUrl(relativePath) {
+  return `${getPublicBasePath(GATEWAY_PREFIX)}api/image/local/${relativePath}`;
+}
 
 class LocalAdapter extends ImageBedAdapter {
   constructor(config = {}) {
@@ -124,7 +131,7 @@ class LocalAdapter extends ImageBedAdapter {
       
       // 生成本地 URL（相对路径）
       const normalizedRelativePath = relativePath.split(path.sep).join('/');
-      const url = `/api/image/local/${normalizedRelativePath}`;
+      const url = getLocalImageUrl(normalizedRelativePath);
       
       return {
         url,
@@ -232,7 +239,7 @@ class LocalAdapter extends ImageBedAdapter {
         const normalizedRelative = relative.split(path.sep).join('/');
         return {
           filename: normalizedRelative,
-          url: `/api/image/local/${normalizedRelative}`,
+          url: getLocalImageUrl(normalizedRelative),
           size: stats.size,
           mimeType: 'image/jpeg',
           createdAt: stats.mtime.getTime(),

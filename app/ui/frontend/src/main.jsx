@@ -12,6 +12,8 @@ import { initPerformanceOptimizations } from './utils/performanceOptimization.js
 
 const getProxyBasePath = () => {
   if (typeof window === 'undefined') return '/'
+  const buildBase = import.meta.env.BASE_URL || '/'
+  if (buildBase !== '/') return buildBase.endsWith('/') ? buildBase : `${buildBase}/`
   const marker = '/index.cgi/'
   const pathname = window.location.pathname || '/'
   const idx = pathname.indexOf(marker)
@@ -32,16 +34,31 @@ if (typeof window !== 'undefined') {
   // In proxy.cgi mode, rewrite root-relative API requests to same-origin proxy path.
   if (proxyBasePath !== '/' && typeof window.fetch === 'function') {
     const originalFetch = window.fetch.bind(window)
-    const shouldRewrite = (url) =>
-      url.startsWith('/api') ||
-      url.startsWith('/health') ||
-      url.startsWith('/images') ||
-      url.startsWith('/math-svg')
+    const internalRoots = [
+      'api',
+      'health',
+      'images',
+      'math-svg',
+      'font-cache',
+      'office-editor',
+      'wasm',
+      'code-themes',
+      'katex',
+      'mathjax',
+    ]
+    const shouldRewrite = (url) => {
+      const normalized = url.replace(/^\//, '')
+      return internalRoots.some((root) => normalized === root || normalized.startsWith(`${root}/`) || normalized.startsWith(`${root}?`))
+    }
+    const rewriteUrl = (rawUrl) => {
+      if (!shouldRewrite(rawUrl)) return rawUrl
+      const absolutePath = rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`
+      return joinBasePath(proxyBasePath, absolutePath)
+    }
 
     window.fetch = (input, init) => {
       if (typeof input === 'string') {
-        const next = shouldRewrite(input) ? joinBasePath(proxyBasePath, input) : input
-        return originalFetch(next, init)
+        return originalFetch(rewriteUrl(input), init)
       }
       if (input instanceof Request) {
         const rawUrl = input.url || ''

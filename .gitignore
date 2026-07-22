@@ -10,6 +10,8 @@
 !config/**
 !data/
 !data/**
+!docs/
+!docs/**
 !wizard/
 !wizard/**
 !scripts/
@@ -18,10 +20,12 @@
 # Runtime/generated artifacts (do not commit)
 app/server/node_modules/
 app/ui/frontend/node_modules/
+app/ui/frontend/node_modules.*/
 app/var/app.db
 app/var/app.db-shm
 app/var/app.db-wal
 app/var/thumbnails/
+app/shares/images/
 *.fpk
 
 # 允许推送的根目录文件

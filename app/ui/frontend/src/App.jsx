@@ -9119,6 +9119,9 @@ const handler = async (event) => {
     if (typeof window === 'undefined') return ''
     const proxyBase = window.__APP_PROXY_BASE_PATH__ || '/'
     if (proxyBase === '/') return window.location.origin
+    if (proxyBase.startsWith('/app/')) {
+      return `${window.location.origin}${proxyBase}`
+    }
 
     const queryPort = new URLSearchParams(window.location.search).get('service_port')
     const storedPort =

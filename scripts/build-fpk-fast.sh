@@ -39,6 +39,7 @@ build_frontend_dist() {
   [ -n "$MANIFEST_VERSION" ] || MANIFEST_VERSION="unknown"
   OUTPUT_VERSIONED_FPK="${APP_NAME}-${MANIFEST_VERSION}-amd64.fpk"
   export VITE_APP_VERSION="$MANIFEST_VERSION"
+  export VITE_APP_BASE_URL="/app/App-Native-MdEditor2/"
   log "building frontend dist"
   pushd "$frontend_dir" >/dev/null
 
@@ -62,6 +63,8 @@ require_file "$ROOT_DIR/config"
 require_file "$ROOT_DIR/wizard"
 require_file "$ROOT_DIR/app/server"
 require_file "$ROOT_DIR/app/ui/config"
+require_file "$ROOT_DIR/app/office-editor/dist/index.html"
+require_file "$ROOT_DIR/app/office-editor/dist/sdkjs/common/libfont/engine/fonts.wasm"
 
 if [ -z "$MANIFEST_VERSION" ]; then
   MANIFEST_VERSION="$(awk -F= '$1=="version"{print $2; exit}' "$ROOT_DIR/manifest" | tr -d '\r\n')"
@@ -100,7 +103,7 @@ sed -i 's/^platform=.*/platform=x86/' "$STAGE_DIR/manifest"
 
 # Frontend: keep dist only
 cp -a "$ROOT_DIR/app/ui/frontend/dist" "$STAGE_DIR/app/ui/frontend/"
-[ -d "$ROOT_DIR/app/office-editor/dist" ] && cp -a "$ROOT_DIR/app/office-editor" "$STAGE_DIR/app/"
+cp -a "$ROOT_DIR/app/office-editor" "$STAGE_DIR/app/"
 
 # Server: keep runtime files, trim known non-runtime heavy dirs
 rsync -a \
@@ -137,8 +140,9 @@ with tarfile.open(fpk_path, 'r:gz') as outer:
     app_data = outer.extractfile(app_member).read()
 
 with tarfile.open(fileobj=io.BytesIO(app_data), mode='r:gz') as inner:
+    names = set(inner.getnames())
     target = 'server/server.js'
-    if target not in inner.getnames():
+    if target not in names:
       print('[fast-pack][ERROR] server/server.js not found in app.tgz', file=sys.stderr)
       sys.exit(2)
     content = inner.extractfile(target).read().decode('utf-8', 'ignore')
@@ -148,7 +152,16 @@ if missing:
     print('[fast-pack][ERROR] package verification failed, missing keys:', ', '.join(missing), file=sys.stderr)
     sys.exit(3)
 
-print('[fast-pack] package verification passed: office trim.docs routes detected')
+office_files = {
+    'office-editor/dist/index.html',
+    'office-editor/dist/sdkjs/common/libfont/engine/fonts.wasm',
+}
+missing_office = sorted(office_files - names)
+if missing_office:
+    print('[fast-pack][ERROR] embedded Office Editor files missing:', ', '.join(missing_office), file=sys.stderr)
+    sys.exit(4)
+
+print('[fast-pack] package verification passed: embedded Office Editor files detected')
 PY
 
 cp -f "$STAGE_DIR/$OUTPUT_FPK" "$ROOT_DIR/$OUTPUT_FPK"

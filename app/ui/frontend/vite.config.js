@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
-  base: './',
+  base: process.env.VITE_APP_BASE_URL || '/',
   plugins: [react()],
   cacheDir: '/tmp/.vite',
   server: {
@@ -26,7 +26,7 @@ export default defineConfig({
         changeOrigin: true
       },
       '/images': {
-        target: 'http://127.0.0.1:18008',
+        target: 'http://127.0.0.1:18080',
         changeOrigin: true
       },
       '/math-svg': {

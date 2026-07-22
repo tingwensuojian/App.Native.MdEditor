@@ -1,13 +1,18 @@
 {
   ".url": {
-    "App.Native.MdEditor2.Proxy.Application": {
+    "App.Native.MdEditor2.Application": {
       "title": "Markdown 编辑器",
       "icon": "images/icon-{0}.png",
       "type": "iframe",
-      "protocol": "http",
-      "port": "",
-      "url": "/cgi/ThirdParty/App.Native.MdEditor2/index.cgi/",
-      "allUsers": true
+      "protocol": "",
+      "gatewaySocket": "mdeditor2.sock",
+      "gatewayPrefix": "/app/App-Native-MdEditor2",
+      "url": "/app/App-Native-MdEditor2",
+      "allUsers": false,
+      "control": {
+        "accessPerm": "readonly",
+        "fullUrlPerm": "readonly"
+      }
     }
   }
 }

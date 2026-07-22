@@ -4,8 +4,8 @@
 
 ## 项目状态
 
-- 当前版本：`v1.31.1`
-- 发布日期：`2026-06-21`
+- 当前版本：`v1.31.2`
+- 发布日期：`2026-07-23`
 - 开发阶段：稳定版本（桌面端/移动端可用）
 
 ## 核心能力
@@ -73,6 +73,13 @@
 
 完整条目见 [CHANGELOG.md](./CHANGELOG.md)（开发日志）。
 
+### v1.31.2 (2026-07-23)
+
+- 接入飞牛统一网关，应用入口统一为 `/app/App-Native-MdEditor2/`，不再依赖独立访问端口
+- 修复网关路径下 Office 编辑器、X2T/WASM 转换组件及 Office 文档预览、编辑与保存链路
+- 修复本地图片上传、图片库、AI 生成图片、本地图床，以及阿里云 OSS、腾讯云 COS、七牛云、GitHub 等图床缩略图的网关路径
+- 保持 ONLYOFFICE 编辑器内置，并继续提供 amd64 与 arm64 双架构 FPK 安装包
+
 ### v1.31.1 (2026-06-21)
 
 - 集成 ONLYOFFICE，支持 doc/docx/xls/xlsx/ppt/pptx 在线编辑与保存
@@ -126,7 +133,7 @@
 
 1. 下载 `App.Native.MdEditor2.fpk`
 2. 在飞牛 NAS 应用中心上传安装
-3. 启动应用并访问
+3. 启动应用并访问 `http://<飞牛IP>:5666/app/App-Native-MdEditor2/`
 
 ### 快速开始
 
@@ -164,18 +171,18 @@ fnpack build
 
 ### 多架构打包（amd64/arm64）
 
-使用根目录脚本 `build-fpk-multi-arch.sh` 可分别构建不同架构的 FPK 包：
+使用 `scripts/build-fpk-multi-arch.sh` 可分别构建不同架构的 FPK 包：
 
 ```bash
 # 交互模式（选择目标架构）
-bash build-fpk-multi-arch.sh
+bash scripts/build-fpk-multi-arch.sh
 
 # 指定架构构建
-bash build-fpk-multi-arch.sh amd64
-bash build-fpk-multi-arch.sh arm64
+bash scripts/build-fpk-multi-arch.sh amd64 --safe
+bash scripts/build-fpk-multi-arch.sh arm64 --safe
 
 # 同时构建两个架构
-bash build-fpk-multi-arch.sh amd64 arm64
+bash scripts/build-fpk-multi-arch.sh amd64 arm64 --safe
 ```
 
 产物会按架构命名，例如：`App.Native.MdEditor2-<version>-amd64.fpk`、`App.Native.MdEditor2-<version>-arm64.fpk`。
@@ -218,6 +225,6 @@ MIT License
 
 ---
 
-最后更新：`2026-04-09`（v1.30.2）  
+最后更新：`2026-07-23`（v1.31.2）
 维护者：听闻  
 项目地址：[GitHub](https://github.com/sangxuesheng/App.Native.MdEditor)

@@ -8,6 +8,9 @@
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
+const { getPublicBasePath, normalizeGatewayPrefix } = require('../gatewayConfig')
+
+const GATEWAY_PREFIX = normalizeGatewayPrefix(process.env.FNNAS_GATEWAY_PREFIX || '')
 
 // 缩略图最大尺寸
 const THUMB_MAX_SIZE = 200
@@ -271,7 +274,9 @@ class ImageBedCache {
       mimeType: row.mime_type,
       thumbPath: row.thumb_path,
       // 前端访问缩略图的 URL
-      thumbUrl: row.thumb_path ? `/api/imagebed/${row.imagebed_id}/thumb/${row.id}` : row.url,
+      thumbUrl: row.thumb_path
+        ? `${getPublicBasePath(GATEWAY_PREFIX)}api/imagebed/${row.imagebed_id}/thumb/${row.id}`
+        : row.url,
       cachedAt: row.cached_at,
       createdAt: row.cached_at,
     }

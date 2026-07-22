@@ -189,7 +189,13 @@ build_frontend_dist_once() {
   log "building frontend dist"
   pushd "$frontend_dir" >/dev/null
 
+  # Git Bash rewrites slash-prefixed environment values as Windows paths.
+  # Keep the FnOS gateway base URL literal when this script runs on Windows.
+  case "$(uname -s)" in
+    MINGW*|MSYS*) export MSYS_NO_PATHCONV=1 ;;
+  esac
   export VITE_APP_VERSION="$MANIFEST_VERSION"
+  export VITE_APP_BASE_URL="/app/App-Native-MdEditor2/"
   npm install
 
   # Workaround for npm optional deps bug on ARM (missing rollup native module)
@@ -265,6 +271,11 @@ install_server_runtime_deps_for_arch() {
 stage_common_files() {
   local stage_dir="$1"
 
+  [ -f "$ROOT_DIR/app/office-editor/dist/index.html" ] || { err "embedded Office Editor index.html is missing"; exit 1; }
+  [ -f "$ROOT_DIR/app/office-editor/dist/sdkjs/common/libfont/engine/fonts.wasm" ] || { err "embedded Office Editor WASM is missing"; exit 1; }
+  [ -f "$ROOT_DIR/app/office-editor/dist/wasm/x2t/x2t.js" ] || { err "embedded Office Editor X2T script is missing"; exit 1; }
+  [ -f "$ROOT_DIR/app/office-editor/dist/wasm/x2t/x2t.wasm.gz" ] || { err "embedded Office Editor X2T WASM is missing"; exit 1; }
+
   mkdir -p "$stage_dir/app/ui/frontend" "$stage_dir/app/ui" "$stage_dir/app"
 
   cp -a "$ROOT_DIR/manifest" "$ROOT_DIR/ICON.PNG" "$ROOT_DIR/ICON_256.PNG" "$stage_dir/"
@@ -278,13 +289,42 @@ stage_common_files() {
   [ -e "$ROOT_DIR/app/ui/svg.svg" ] && cp -a "$ROOT_DIR/app/ui/svg.svg" "$stage_dir/app/ui/"
 
   cp -a "$ROOT_DIR/app/ui/frontend/dist" "$stage_dir/app/ui/frontend/"
-  [ -d "$ROOT_DIR/app/office-editor/dist" ] && cp -a "$ROOT_DIR/app/office-editor" "$stage_dir/app/"
+  cp -a "$ROOT_DIR/app/office-editor" "$stage_dir/app/"
 
   mkdir -p "$stage_dir/app/server"
   tar -cf - --exclude='node_modules' -C "$ROOT_DIR/app/server" . | tar -xf - -C "$stage_dir/app/server"
 
   # Fix all file permissions in staging for sandbox environments without chown
   chmod -R u+rwX "$stage_dir"
+}
+
+verify_packaged_office_editor() {
+  local fpk_path="$1"
+
+  python3 - "$fpk_path" <<'PY'
+import io
+import sys
+import tarfile
+
+required = {
+    'office-editor/dist/index.html',
+    'office-editor/dist/sdkjs/common/libfont/engine/fonts.wasm',
+    'office-editor/dist/wasm/x2t/x2t.js',
+    'office-editor/dist/wasm/x2t/x2t.wasm.gz',
+}
+
+with tarfile.open(sys.argv[1], 'r:gz') as outer:
+    app_data = outer.extractfile('app.tgz').read()
+
+with tarfile.open(fileobj=io.BytesIO(app_data), mode='r:gz') as inner:
+    missing = sorted(required - set(inner.getnames()))
+
+if missing:
+    print('[multi-pack][ERROR] embedded Office Editor files missing from FPK:', ', '.join(missing), file=sys.stderr)
+    sys.exit(1)
+
+print('[multi-pack] FPK verification passed: embedded Office Editor files detected')
+PY
 }
 
 build_one_arch() {
@@ -326,6 +366,7 @@ build_one_arch() {
   local out_fpk="$ROOT_DIR/${APP_NAME}-${MANIFEST_VERSION}-${target_arch}.fpk"
 
   [ -f "$raw_fpk" ] || { err "fnpack output missing for ${target_arch}"; rm -rf "$stage_dir"; exit 1; }
+  verify_packaged_office_editor "$raw_fpk"
 
   cp -f "$raw_fpk" "$out_fpk"
   log "done: ${out_fpk} ($(du -sh "$out_fpk" | cut -f1))"

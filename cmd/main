@@ -6,13 +6,13 @@
 
 LOG_FILE="${TRIM_PKGVAR}/md-editor.log"
 PID_FILE="${TRIM_PKGVAR}/md-editor.pid"
+GATEWAY_SOCKET="${TRIM_APPDEST}/mdeditor2.sock"
+GATEWAY_PREFIX="/app/App-Native-MdEditor2"
 
 # Node.js 运行环境（需与 manifest.install_dep_apps 对应）
 export PATH=/var/apps/nodejs_v22/target/bin:$PATH
 
 # 使用用户配置的端口（从向导获取）或环境变量，最后使用默认值
-PORT="${wizard_port:-${TRIM_SERVICE_PORT:-18080}}"
-
 log_msg() {
   local msg="$1"
   echo "$(date '+%Y-%m-%d %H:%M:%S') - ${msg}" >> "${LOG_FILE}"
@@ -47,7 +47,10 @@ start_app() {
   fi
 
   mkdir -p "${TRIM_PKGVAR}"
-  log_msg "starting backend on port ${PORT} ..."
+  rm -f "${GATEWAY_SOCKET}"
+  export FNNAS_GATEWAY_SOCKET="${GATEWAY_SOCKET}"
+  export FNNAS_GATEWAY_PREFIX="${GATEWAY_PREFIX}"
+  log_msg "starting backend on gateway socket ${GATEWAY_SOCKET} ..."
 
   # 首次启动：检查 node_modules 是否需要解压
   if [ ! -d "${TRIM_APPDEST}/server/node_modules" ] && [ -f "${TRIM_APPDEST}/server/node_modules.tar.gz" ]; then
@@ -71,7 +74,7 @@ start_app() {
     exit 1
   fi
 
-  PORT="${PORT}" node "${TRIM_APPDEST}/server/server.js" >> "${LOG_FILE}" 2>&1 &
+  node "${TRIM_APPDEST}/server/server.js" >> "${LOG_FILE}" 2>&1 &
   local pid="$!"
 
   if [ -z "${pid}" ]; then
@@ -81,7 +84,23 @@ start_app() {
   fi
 
   echo "${pid}" > "${PID_FILE}"
-  log_msg "backend started, pid=${pid}"
+
+  local socket_wait=0
+  while [ ! -S "${GATEWAY_SOCKET}" ] && check_process "${pid}" && [ "${socket_wait}" -lt 10 ]; do
+    sleep 1
+    socket_wait=$((socket_wait + 1))
+  done
+
+  if [ ! -S "${GATEWAY_SOCKET}" ]; then
+    log_msg "gateway socket was not created"
+    kill -TERM "${pid}" 2>/dev/null || true
+    rm -f "${PID_FILE}" "${GATEWAY_SOCKET}"
+    echo "统一网关 Socket 创建失败，请查看 ${LOG_FILE}" > "${TRIM_TEMP_LOGFILE}"
+    return 1
+  fi
+
+  chmod 0666 "${GATEWAY_SOCKET}"
+  log_msg "backend started, pid=${pid}, gateway_prefix=${GATEWAY_PREFIX}"
 }
 
 stop_app() {
@@ -89,6 +108,7 @@ stop_app() {
 
   if [ ! -f "${PID_FILE}" ]; then
     log_msg "pid file not found, treat as stopped"
+    rm -f "${GATEWAY_SOCKET}"
     return 0
   fi
 
@@ -97,7 +117,7 @@ stop_app() {
 
   if [ -z "${pid}" ] || ! check_process "${pid}"; then
     log_msg "process not running, cleanup pid file"
-    rm -f "${PID_FILE}"
+    rm -f "${PID_FILE}" "${GATEWAY_SOCKET}"
     return 0
   fi
 
@@ -116,7 +136,7 @@ stop_app() {
     sleep 1
   fi
 
-  rm -f "${PID_FILE}"
+  rm -f "${PID_FILE}" "${GATEWAY_SOCKET}"
   log_msg "backend stopped"
 }
 
@@ -147,5 +167,3 @@ case "$1" in
     exit 1
     ;;
 esac
-
-

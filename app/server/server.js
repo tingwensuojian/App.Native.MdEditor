@@ -23,8 +23,19 @@ const { ImageBedManager } = require('./imagebed');
 const { handleImagebedApi } = require('./imagebedApi');
 const { handleAuthRoutes } = require('./authRoutes');
 const { isAuthEnabled, requireAuth, optionalAuth } = require('./authMiddleware');
+const {
+  getPublicBasePath,
+  normalizeGatewayPrefix,
+  stripGatewayPrefix,
+} = require('./gatewayConfig');
 
 const PORT = process.env.PORT || process.env.TRIM_SERVICE_PORT || 18089;
+const GATEWAY_SOCKET = String(process.env.FNNAS_GATEWAY_SOCKET || '').trim();
+const GATEWAY_PREFIX = normalizeGatewayPrefix(process.env.FNNAS_GATEWAY_PREFIX || '');
+
+function toPublicAppPath(pathname) {
+  return `${getPublicBasePath(GATEWAY_PREFIX)}${String(pathname || '').replace(/^\/+/, '')}`;
+}
 
 // 模型拉取过滤：仅保留对话 + 图片模型，排除音频/ASR/embedding/TTS 等
 const IMAGE_MODEL_PATTERNS = [/flux/i, /kolors/i, /dall-e/i, /wanx/i, /cogview/i, /black-forest/i, /schnell/i, /qwen-image/i, /stable-diffusion/i, /seedream/i, /flux\.1/i, /flux-1/i, /image-edit/i, /wan2\.6|wan2\.5|wan2\.2|z-image/i];
@@ -437,6 +448,7 @@ const imagebedManager = new ImageBedManager(
 
 const server = http.createServer(async (req, res) => {
   const parsed = url.parse(req.url, true);
+  parsed.pathname = stripGatewayPrefix(parsed.pathname, GATEWAY_PREFIX);
 
   // multipart 表单解析函数
   async function readMultipartBodyLocal(req, boundary) {
@@ -554,11 +566,17 @@ const server = http.createServer(async (req, res) => {
   if (parsed.pathname === '/api/system/proxy-path' && req.method === 'GET') {
     const originalUri = req.headers["x-original-uri"];
     const appName = process.env.TRIM_APPNAME || '';
-    let proxyBasePath = '/';
-    if (originalUri && appName) {
+    let proxyBasePath = getPublicBasePath(GATEWAY_PREFIX);
+    if (!GATEWAY_PREFIX && originalUri && appName) {
       proxyBasePath = '/cgi/ThirdParty/' + appName + '/index.cgi/';
     }
-    sendJson(res, 200, { ok: true, proxyBasePath: proxyBasePath, appName: appName, viaProxy: !!originalUri });
+    sendJson(res, 200, {
+      ok: true,
+      proxyBasePath,
+      appName,
+      viaProxy: Boolean(GATEWAY_PREFIX || originalUri),
+      gatewayPrefix: GATEWAY_PREFIX,
+    });
     return;
   }
 
@@ -755,7 +773,7 @@ const server = http.createServer(async (req, res) => {
           status: 'cached',
           type: 'file',
           loadedFamily: source.loadedFamily || family,
-          localUrl: `/font-cache/${encodeURIComponent(fileName)}`,
+          localUrl: toPublicAppPath(`font-cache/${encodeURIComponent(fileName)}`),
           fileName,
           updatedAt: Date.now(),
         };
@@ -790,7 +808,7 @@ const server = http.createServer(async (req, res) => {
           const fontFilePath = path.join(FONT_CACHE_DIR, fontFileName);
           fs.writeFileSync(fontFilePath, download.payload);
 
-          cssText = cssText.split(rawUrl).join(`/font-cache/${encodeURIComponent(fontFileName)}`);
+          cssText = cssText.split(rawUrl).join(toPublicAppPath(`font-cache/${encodeURIComponent(fontFileName)}`));
         }
 
         const cssFileName = `${slug}.css`;
@@ -801,7 +819,7 @@ const server = http.createServer(async (req, res) => {
           status: 'cached',
           type: 'css',
           loadedFamily: source.loadedFamily || family,
-          localCssUrl: `/font-cache/${encodeURIComponent(cssFileName)}`,
+          localCssUrl: toPublicAppPath(`font-cache/${encodeURIComponent(cssFileName)}`),
           cssFileName,
           updatedAt: Date.now(),
         };
@@ -2633,7 +2651,7 @@ const server = http.createServer(async (req, res) => {
       const images = [];
       
       // 递归扫描图片目录
-      function scanDirectory(dir, baseUrl = '/images') {
+      function scanDirectory(dir, baseUrl = toPublicAppPath('images')) {
         try {
           const entries = fs.readdirSync(dir, { withFileTypes: true });
           
@@ -2705,6 +2723,7 @@ const server = http.createServer(async (req, res) => {
 
         pathname = pathname.split('?')[0].split('#')[0];
         try { pathname = decodeURIComponent(pathname); } catch (_) {}
+        pathname = stripGatewayPrefix(pathname, GATEWAY_PREFIX);
 
         const isImagesPath = pathname.startsWith('/images/');
         const isLocalApiPath = pathname.startsWith('/api/image/local/');
@@ -2828,6 +2847,7 @@ const server = http.createServer(async (req, res) => {
 
       pathname = pathname.split('?')[0].split('#')[0];
       try { pathname = decodeURIComponent(pathname); } catch (_) {}
+      pathname = stripGatewayPrefix(pathname, GATEWAY_PREFIX);
 
       const isImagesPath = pathname.startsWith('/images/');
       const isLocalApiPath = pathname.startsWith('/api/image/local/');
@@ -3098,7 +3118,7 @@ const server = http.createServer(async (req, res) => {
 
         // 同时返回 base64 编码的 SVG 内容，供前端内联使用
         const svgBase64 = Buffer.from(svgContent, 'utf8').toString('base64');
-        sendJson(res, 200, { ok: true, url: '/math-svg/' + filename, width, height, svgBase64 });
+        sendJson(res, 200, { ok: true, url: toPublicAppPath(`math-svg/${filename}`), width, height, svgBase64 });
       } catch (err) {
         console.error('Math SVG render error:', err);
         sendJson(res, 500, { ok: false, code: 'RENDER_ERROR', message: '渲染失败: ' + err.message });
@@ -3208,7 +3228,7 @@ const server = http.createServer(async (req, res) => {
         const filePath = path.join(imagesDir, filename);
         fs.writeFileSync(filePath, buffer);
 
-        const imageUrl = `/images/${year}/${month}/${day}/${filename}`;
+        const imageUrl = toPublicAppPath(`images/${year}/${month}/${day}/${filename}`);
         sendJson(res, 200, { ok: true, url: imageUrl, filename, size: buffer.length });
       } catch (e) {
         console.error('fetch-url 失败:', e);
@@ -3545,7 +3565,7 @@ const server = http.createServer(async (req, res) => {
               // 降级到本地存储
               const filepath = path.join(imagesDir, safeFilename);
               fs.writeFileSync(filepath, fileContent);
-              imageInfo.url = `/images/${year}/${month}/${day}/${safeFilename}`;
+              imageInfo.url = toPublicAppPath(`images/${year}/${month}/${day}/${safeFilename}`);
               imageInfo.fallback = true;
             }
           } else {
@@ -3553,7 +3573,7 @@ const server = http.createServer(async (req, res) => {
             console.log('[Upload] 上传到本地存储');
             const filepath = path.join(imagesDir, safeFilename);
             fs.writeFileSync(filepath, fileContent);
-            imageInfo.url = `/images/${year}/${month}/${day}/${safeFilename}`;
+            imageInfo.url = toPublicAppPath(`images/${year}/${month}/${day}/${safeFilename}`);
           }
 
           uploadedImages.push(imageInfo);
@@ -4158,7 +4178,12 @@ const server = http.createServer(async (req, res) => {
             res.end('Server Error');
             return;
           }
-          // base tag removed - office editor uses relative paths
+          // The embedded editor assumes /wasm is served from the site root.
+          // Under the FnOS gateway it must remain below the Office iframe path.
+          if (officePath === '/index.html') {
+            const gatewayFetchShim = `<script>(function(){var base=new URL('./',window.location.href).pathname;var rewrite=function(url){return typeof url==='string'&&url.indexOf('/wasm/')===0?base+url.slice(1):url};var nativeFetch=window.fetch.bind(window);window.fetch=function(input,init){return nativeFetch(rewrite(input),init)};var descriptor=Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype,'src');if(descriptor&&descriptor.set){Object.defineProperty(HTMLScriptElement.prototype,'src',{configurable:true,get:descriptor.get,set:function(value){descriptor.set.call(this,rewrite(value))}})}})();</script>`;
+            data = data.replace(/<head([^>]*)>/i, function (head) { return head + gatewayFetchShim; });
+          }
           res.writeHead(200, { 'Content-Type': officeMime[ext] || 'application/octet-stream' });
           res.end(data);
         });
@@ -4272,8 +4297,53 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-// 显式绑定 0.0.0.0，与 web/fpk 的 python -m http.server --bind 0.0.0.0 一致，确保局域网内手机/PC 均可访问
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`App.Native.MdEditor backend listening on port ${PORT}`);
+// Use the fnOS Unix Socket in production and a loopback TCP port for local development.
+function removeGatewaySocket() {
+  if (!GATEWAY_SOCKET) return;
+  try {
+    if (fs.existsSync(GATEWAY_SOCKET)) fs.unlinkSync(GATEWAY_SOCKET);
+  } catch (error) {
+    console.error(`[gateway] failed to remove socket ${GATEWAY_SOCKET}:`, error.message);
+  }
+}
+
+function onListening() {
+  if (GATEWAY_SOCKET) {
+    try {
+      fs.chmodSync(GATEWAY_SOCKET, 0o660);
+    } catch (error) {
+      console.error('[gateway] failed to set socket permissions:', error.message);
+    }
+    console.log(`App.Native.MdEditor backend listening on Unix socket ${GATEWAY_SOCKET}`);
+    console.log(`Gateway prefix: ${GATEWAY_PREFIX || '(none)'}`);
+  } else {
+    console.log(`App.Native.MdEditor backend listening on 127.0.0.1:${PORT}`);
+  }
   console.log(`Static files: ${STATIC_DIR}`);
-});
+}
+
+if (GATEWAY_SOCKET) {
+  fs.mkdirSync(path.dirname(GATEWAY_SOCKET), { recursive: true });
+  removeGatewaySocket();
+  server.listen(GATEWAY_SOCKET, onListening);
+} else {
+  server.listen(PORT, '127.0.0.1', onListening);
+}
+
+let shuttingDown = false;
+function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`Received ${signal}, shutting down`);
+  server.close(() => {
+    removeGatewaySocket();
+    process.exit(0);
+  });
+  setTimeout(() => {
+    removeGatewaySocket();
+    process.exit(1);
+  }, 5000).unref();
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

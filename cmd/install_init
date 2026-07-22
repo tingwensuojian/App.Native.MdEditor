@@ -1,39 +1,5 @@
 #!/bin/bash
 
-# 安装初始化脚本（install_init）
-# - 安装前的环境检查与准备逻辑（保持幂等）
-
-echo "App.Native.MdEditor2 install_init running..."
-
-# 获取用户在向导中输入的端口
-PORT="${wizard_port}"
-
-# 如果没有配置端口，使用默认值
-if [ -z "${PORT}" ]; then
-    PORT="18080"
-fi
-
-echo "检查端口 ${PORT} 是否可用..."
-
-# 检查端口是否被占用（使用 ss 命令）
-if command -v ss >/dev/null 2>&1; then
-    if ss -tuln | grep -q ":${PORT} "; then
-        echo "错误：端口 ${PORT} 已被占用，请返回安装向导选择其他端口。" > "${TRIM_TEMP_LOGFILE}"
-        exit 1
-    fi
-# 如果 ss 不可用，尝试使用 netstat
-elif command -v netstat >/dev/null 2>&1; then
-    if netstat -tuln 2>/dev/null | grep -q ":${PORT} "; then
-        echo "错误：端口 ${PORT} 已被占用，请返回安装向导选择其他端口。" > "${TRIM_TEMP_LOGFILE}"
-        exit 1
-    fi
-else
-    echo "警告：无法检查端口占用情况（ss 和 netstat 命令均不可用），将继续安装。"
-fi
-
-echo "端口 ${PORT} 可用，继续安装..."
-
+# The unified gateway uses a Unix Socket, so no TCP port check is required.
+echo "App.Native.MdEditor2 unified gateway install check passed."
 exit 0
-
-
-

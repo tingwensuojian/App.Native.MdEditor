@@ -294,9 +294,6 @@ export const loadChunk = async (chunkName) => {
 export const applyMobileOptimizations = () => {
   if (!isMobile()) return
   
-  // 预连接到 API 服务器
-  preconnect('http://localhost:18080')
-  
   // 禁用不必要的动画
   document.documentElement.classList.add('reduce-motion')
   
